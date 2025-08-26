@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronRight,
   Loader2,
   Trophy,
   Users
@@ -116,6 +115,11 @@ export default function RegistrationPage() {
 
   // Handle category selection (Step 1)
   const handleCategorySelect = (category: Category) => {
+    if (category === "COMMUNITY") {
+      router.push("/registration/community");
+      return;
+    }
+
     setSelectedCategory(category);
     setValue("category", category);
     setCurrentStep(2);
@@ -194,7 +198,8 @@ export default function RegistrationPage() {
       features: ["Jersey eksklusif", "Medali finisher", "Race pack", "E-certificate"],
       icon: <Users className="w-8 h-8" />,
       color: "from-primary to-torea-bay",
-      quota: "150/300",
+      popular: true,
+      link: "./page.tsx"
     },
     {
       id: "10K" as Category,
@@ -205,8 +210,8 @@ export default function RegistrationPage() {
       features: ["Jersey premium", "Medali eksklusif", "Timing chip", "Prize pool"],
       icon: <Trophy className="w-8 h-8" />,
       color: "from-secondary to-accent",
-      quota: "75/200",
-      popular: true,
+      popular: false,
+      link: "./page.tsx"
     },
     {
       id: "COMMUNITY" as Category,
@@ -216,7 +221,7 @@ export default function RegistrationPage() {
       features: ["Diskon 15%", "Tent khusus", "Photo booth", "Group certificate"],
       icon: <Users className="w-8 h-8" />,
       color: "from-waikawa-gray to-ship-cove",
-      quota: "20/100",
+      link: "./community/page.tsx"
     },
   ];
 
@@ -291,11 +296,6 @@ export default function RegistrationPage() {
                         </li>
                       ))}
                     </ul>
-
-                    <div className="flex items-center justify-between text-sm text-gray-500">
-                      <span>Kuota: {category.quota}</span>
-                      <ChevronRight className="w-5 h-5" />
-                    </div>
                   </div>
                 </div>
               ))}

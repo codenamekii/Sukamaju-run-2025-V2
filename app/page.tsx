@@ -225,25 +225,25 @@ export default function HomePage() {
 
   const categories = [
     {
-      title: "Fun Run 5K",
+      title: "5K Umum",
       price: "Rp 180.000",
       description: "Cocok untuk pemula",
-      benefits: ["Jersey eksklusif", "Medali finisher", "Race pack", "Sertifikat"],
+      benefits: ["Jersey eksklusif", "Medali finisher", "Sertifikat", "refreshment", "e-certificate"],
       color: "from-primary to-torea-bay",
+      popular: true,
     },
     {
-      title: "Challenge 10K",
+      title: "10K Professional",
       price: "Rp 230.000",
       description: "Untuk pelari berpengalaman",
-      benefits: ["Jersey premium", "Medali eksklusif", "Race pack premium", "Timing chip", "Hadiah utama"],
+      benefits: ["Jersey premium", "Medali eksklusif", "Race pack premium", "Refreshment++", "e-certificate"],
       color: "from-secondary to-accent",
-      popular: true,
     },
     {
       title: "Komunitas",
       price: "Special Price",
-      description: "Min. 10 orang",
-      benefits: ["Diskon khusus", "Tent komunitas", "Photo booth", "Sertifikat"],
+      description: "Min. 5 Runners",
+      benefits: ["Diskon khusus", "Tent komunitas", "Photo booth", "e-certificate komunitas"],
       color: "from-waikawa-gray to-ship-cove",
     },
   ];

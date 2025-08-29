@@ -80,7 +80,6 @@ export default function RegistrationPage() {
 
   const {
     register,
-    handleSubmit,
     watch,
     formState: { errors },
     setValue,
@@ -159,6 +158,8 @@ export default function RegistrationPage() {
   };
 
   // Handle form submission
+  // Replace handleFormSubmit in app/registration/page.tsx with this:
+
   const handleFormSubmit = async (data: RegistrationData) => {
     setIsSubmitting(true);
 
@@ -167,22 +168,138 @@ export default function RegistrationPage() {
       data.whatsapp = formatPhoneNumber(data.whatsapp);
       data.emergencyPhone = formatPhoneNumber(data.emergencyPhone);
 
-      // TODO: Send data to API
       console.log("Submitting registration:", data);
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Prepare data for API - match the backend schema
+      const apiData = {
+        // Personal Information
+        fullName: data.fullName,
+        gender: data.gender,
+        dateOfBirth: data.dateOfBirth,
+        idNumber: data.identityNumber,
 
-      // Clear session storage
+        // Contact Information
+        email: data.email,
+        whatsapp: data.whatsapp,
+        address: data.address,
+        province: data.province,
+        city: data.city || '',
+
+        // Race Information
+        category: selectedCategory, // Make sure this is '5K' or '10K'
+        bibName: data.bibName,
+        jerseySize: data.jerseySize,
+
+        // Emergency Contact
+        emergencyName: data.emergencyName,
+        emergencyPhone: data.emergencyPhone,
+        emergencyRelation: data. emergencyRelation,
+        bloodType: data.bloodType || '',
+        medicalHistory: data.medicalHistory || '',
+        allergies: data.allergies || ''
+      };
+
+      // Call the actual API
+      const response = await fetch('/api/registration', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(apiData)
+      });
+
+      const result = await response.json();
+      console.log('API Response:', result);
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Registration failed');
+      }
+
+      // Registration successful!
+      const { registrationCode, bibNumber, totalPrice, paymentCode } = result.data;
+
+      // Format price for display
+      const formattedPrice = new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0
+      }).format(totalPrice);
+
+      // Clear session storage after successful registration
       clearFormSession();
 
-      // Redirect to payment page
-      // router.push("/registration/payment/MOCK-ID");
-      alert("Registration successful! (Mock - API not connected yet)");
+      // Show success message
+      alert(`
+✅ REGISTRASI BERHASIL!
+
+Kode Registrasi: ${registrationCode}
+Nomor BIB: ${bibNumber}
+Kode Pembayaran: ${paymentCode}
+Total: ${formattedPrice}
+
+Silakan screenshot informasi ini!
+Anda akan diarahkan ke halaman pembayaran.
+    `);
+
+      // Try to initialize payment (optional)
+      try {
+        const paymentResponse = await fetch('/api/payment/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ registrationCode })
+        });
+
+        const paymentResult = await paymentResponse.json();
+
+        if (paymentResult.success) {
+          console.log('Payment initialized:', paymentResult);
+
+          // Check if we should use Midtrans or just redirect
+          if (typeof window !== 'undefined' && window.snap && paymentResult.token && !paymentResult.testMode) {
+            // Open Midtrans payment popup
+            window.snap.pay(paymentResult.token, {
+              onSuccess: function (result: unknown) {
+                router.push(`/registration/success?code=${registrationCode}`);
+              },
+              onPending: function (result: unknown) {
+                router.push(`/registration/pending?code=${registrationCode}`);
+              },
+              onError: function (result: unknown) {
+                alert('Payment failed. Please try again.');
+                router.push(`/registration/pending?code=${registrationCode}`);
+              },
+              onClose: function () {
+                router.push(`/registration/pending?code=${registrationCode}`);
+              }
+            });
+          } else {
+            // No payment gateway configured, redirect to success/pending page
+            router.push(`/registration/success?code=${registrationCode}`);
+          }
+        } else {
+          // Payment init failed but registration successful
+          router.push(`/registration/success?code=${registrationCode}`);
+        }
+      } catch (paymentError) {
+        console.log('Payment initialization skipped:', paymentError);
+        // Still redirect to success page even if payment fails
+        router.push(`/registration/success?code=${registrationCode}`);
+      }
 
     } catch (error) {
       console.error("Registration error:", error);
-      alert("Registration failed. Please try again.");
+
+      const errorMessage = error instanceof Error ? error.message : 'Registration failed';
+
+      alert(`
+❌ REGISTRASI GAGAL
+
+Error: ${errorMessage}
+
+Silakan coba lagi atau hubungi panitia.
+    `);
     } finally {
       setIsSubmitting(false);
     }

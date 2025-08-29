@@ -9,7 +9,7 @@ declare global {
   }
 }
 
-interface Snap {
+export interface Snap {
   pay: (
     token: string,
     options: {

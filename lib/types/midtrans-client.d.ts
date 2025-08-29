@@ -73,4 +73,14 @@ declare module "midtrans-client" {
       status(orderId: string): Promise<TransactionStatusResponse>;
     };
   }
+
+  // types/global.d.ts
+  export { };
+
+  declare global {
+    interface Window {
+      snap: pay;
+    }
+  }
+
 }

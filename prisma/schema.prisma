@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,64 +8,45 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ==================== PARTICIPANTS ====================
 model Participant {
-  id               String    @id @default(cuid())
-  
-  // Personal Info
-  fullName         String
-  gender           String    // L/P
-  dateOfBirth      DateTime
-  idNumber         String    // NIK
-  bloodType        String?   // A/B/AB/O + rhesus
-  
-  // Contact Info
-  email            String    @unique
-  whatsapp         String
-  address          String
-  province         String
-  city             String
-  postalCode       String?
-  
-  // Race Info
-  category         String    // 5K/10K/COMMUNITY
-  bibName          String    // Max 20 chars for BIB
-  jerseySize       String    // S/M/L/XL/XXL/XXXL
-  estimatedTime    String?   // Expected finish time
-  
-  // Emergency Contact
-  emergencyName    String
-  emergencyPhone   String
-  emergencyRelation String
-  medicalHistory   String?   @db.Text
-  allergies        String?   @db.Text
-  medications      String?   @db.Text
-  
-  // Registration Info
-  registrationCode String    @unique @default(cuid())
-  bibNumber        String?   @unique
-  registrationType String    @default("INDIVIDUAL") // INDIVIDUAL/COMMUNITY
-  
-  // Pricing
-  basePrice        Int       // Base price at registration time
-  jerseyAddOn      Int       @default(0) // Extra charge for XL+
-  totalPrice       Int       // Final price
-  isEarlyBird      Boolean   @default(false)
-  
-  // Status
-  registrationStatus String  @default("PENDING") // PENDING/CONFIRMED/CANCELLED
-  
-  // Relations
-  payments         Payment[]
-  communityMember  CommunityMember?
-  racePack        RacePack?
-  certificate     Certificate?
-  checkIns        CheckIn[]
-  
-  // Timestamps
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  
+  id                 String           @id @default(cuid())
+  fullName           String
+  gender             String
+  dateOfBirth        DateTime
+  idNumber           String
+  bloodType          String?
+  email              String           @unique
+  whatsapp           String
+  address            String
+  province           String
+  city               String
+  postalCode         String?
+  category           String
+  bibName            String
+  jerseySize         String
+  estimatedTime      String?
+  emergencyName      String
+  emergencyPhone     String
+  emergencyRelation  String
+  medicalHistory     String?
+  allergies          String?
+  medications        String?
+  registrationCode   String           @unique @default(cuid())
+  bibNumber          String?          @unique
+  registrationType   String           @default("INDIVIDUAL")
+  basePrice          Int
+  jerseyAddOn        Int              @default(0)
+  totalPrice         Int
+  isEarlyBird        Boolean          @default(false)
+  registrationStatus String           @default("PENDING")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  certificate        Certificate?
+  checkIns           CheckIn[]
+  communityMember    CommunityMember?
+  payments           Payment[]
+  racePack           RacePack?
+
   @@index([email])
   @@index([registrationCode])
   @@index([bibNumber])
@@ -74,98 +54,68 @@ model Participant {
   @@index([registrationStatus])
 }
 
-// ==================== COMMUNITY REGISTRATION ====================
 model CommunityRegistration {
-  id               String    @id @default(cuid())
-  
-  // Community Info
-  communityName    String
-  communityType    String    // COMPANY/SCHOOL/CLUB/OTHER
-  communityAddress String
-  
-  // PIC (Person in Charge) Info
-  picName          String
-  picWhatsapp      String
-  picEmail         String
-  picPosition      String?
-  
-  // Registration Info
-  registrationCode String    @unique @default(cuid())
-  totalMembers     Int
-  category         String    // 5K/10K
-  
-  // Pricing
-  basePrice        Int       // Price per person
-  totalBasePrice   Int       // basePrice * totalMembers
-  promoAmount      Int       @default(0) // Discount from promo (10+1)
-  jerseyAddOn      Int       @default(0) // Total extra for XL+ jerseys
-  finalPrice       Int       // Total after promo and add-ons
-  appliedPromo     String?   // "BUY_10_GET_1" etc
-  
-  // Status
-  registrationStatus String  @default("PENDING") // PENDING/CONFIRMED/CANCELLED
-  
-  // Relations
-  members          CommunityMember[]
-  payments         Payment[]
-  
-  // Timestamps
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  
+  id                 String            @id @default(cuid())
+  communityName      String
+  communityType      String
+  communityAddress   String
+  picName            String
+  picWhatsapp        String
+  picEmail           String
+  picPosition        String?
+  registrationCode   String            @unique @default(cuid())
+  totalMembers       Int
+  category           String
+  basePrice          Int
+  totalBasePrice     Int
+  promoAmount        Int               @default(0)
+  jerseyAddOn        Int               @default(0)
+  finalPrice         Int
+  appliedPromo       String?
+  registrationStatus String            @default("PENDING")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  members            CommunityMember[]
+  payments           Payment[]
+
   @@index([registrationCode])
   @@index([communityName])
   @@index([picEmail])
 }
 
 model CommunityMember {
-  id                   String                @id @default(cuid())
-  communityRegistration CommunityRegistration @relation(fields: [communityRegistrationId], references: [id], onDelete: Cascade)
+  id                      String                @id @default(cuid())
   communityRegistrationId String
-  
-  participant          Participant           @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  participantId        String               @unique
-  
-  memberNumber         Int                  // Order in community (1, 2, 3...)
-  isFreeMember        Boolean              @default(false) // For 11th member in 10+1 promo
-  
+  participantId           String                @unique
+  memberNumber            Int
+  isFreeMember            Boolean               @default(false)
+  communityRegistration   CommunityRegistration @relation(fields: [communityRegistrationId], references: [id], onDelete: Cascade)
+  participant             Participant           @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
   @@index([communityRegistrationId])
 }
 
-// ==================== PAYMENTS ====================
 model Payment {
-  id               String    @id @default(cuid())
-  
-  // Payment Info
-  paymentCode      String    @unique @default(cuid())
-  amount           Int
-  paymentMethod    String?   // BANK_TRANSFER/GOPAY/OVO/DANA/etc
-  paymentChannel   String?   // BCA/BNI/MANDIRI/etc
-  
-  // Midtrans Info
-  midtransOrderId  String?   @unique
-  midtransToken    String?   @unique
-  midtransResponse Json?     // Store full response
-  vaNumber         String?   // Virtual Account number if applicable
-  
-  // Status
-  status           String    @default("PENDING") // PENDING/SUCCESS/FAILED/EXPIRED/CANCELLED
-  paidAt           DateTime?
-  expiredAt        DateTime?
-  
-  // Relations
-  participant      Participant? @relation(fields: [participantId], references: [id])
-  participantId    String?
-  
-  communityRegistration CommunityRegistration? @relation(fields: [communityRegistrationId], references: [id])
+  id                      String                 @id @default(cuid())
+  paymentCode             String                 @unique @default(cuid())
+  amount                  Int
+  paymentMethod           String?
+  paymentChannel          String?
+  midtransOrderId         String?                @unique
+  midtransToken           String?                @unique
+  midtransResponse        Json?
+  vaNumber                String?
+  status                  String                 @default("PENDING")
+  paidAt                  DateTime?
+  expiredAt               DateTime?
+  participantId           String?
   communityRegistrationId String?
-  
-  // Metadata
-  metadata         Json?     // Additional data if needed
-  
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  
+  metadata                Json?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  communityRegistration   CommunityRegistration? @relation(fields: [communityRegistrationId], references: [id])
+  participant             Participant?           @relation(fields: [participantId], references: [id])
+
   @@index([paymentCode])
   @@index([midtransOrderId])
   @@index([status])
@@ -173,170 +123,121 @@ model Payment {
   @@index([communityRegistrationId])
 }
 
-// ==================== RACE PACK ====================
 model RacePack {
-  id               String    @id @default(cuid())
-  
-  participant      Participant @relation(fields: [participantId], references: [id])
-  participantId    String    @unique
-  
-  // QR Code for collection
-  qrCode           String    @unique @default(cuid())
-  
-  // Collection Status
-  isCollected      Boolean   @default(false)
-  collectedAt      DateTime?
-  collectedBy      String?   // Admin who verified collection
-  collectorName    String?   // Person who collected (if not participant)
-  collectorPhone   String?   // Phone of collector
-  
-  // Pack Items
-  hasJersey        Boolean   @default(true)
-  hasBib           Boolean   @default(true)
-  hasMedal         Boolean   @default(false) // Given after finish
-  hasGoodieBag     Boolean   @default(true)
-  
-  notes            String?   @db.Text
-  
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  
+  id             String      @id @default(cuid())
+  participantId  String      @unique
+  qrCode         String      @unique @default(cuid())
+  isCollected    Boolean     @default(false)
+  collectedAt    DateTime?
+  collectedBy    String?
+  collectorName  String?
+  collectorPhone String?
+  hasJersey      Boolean     @default(true)
+  hasBib         Boolean     @default(true)
+  hasMedal       Boolean     @default(false)
+  hasGoodieBag   Boolean     @default(true)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  participant    Participant @relation(fields: [participantId], references: [id])
+
   @@index([qrCode])
   @@index([isCollected])
 }
 
-// ==================== CHECK IN (Race Day) ====================
 model CheckIn {
-  id               String    @id @default(cuid())
-  
-  participant      Participant @relation(fields: [participantId], references: [id])
-  participantId    String
-  
-  // Check Points
-  checkPoint       String    // START/FINISH/CHECKPOINT_1/CHECKPOINT_2
-  checkTime        DateTime
-  
-  // Race Timing
-  chipTime         String?   // Actual time from start to this point
-  gunTime          String?   // Time from gun start
-  
-  // Verification
-  verifiedBy       String?   // Admin/volunteer who verified
-  verificationMethod String? // QR/MANUAL/CHIP
-  
-  createdAt        DateTime  @default(now())
-  
+  id                 String      @id @default(cuid())
+  participantId      String
+  checkPoint         String
+  checkTime          DateTime
+  chipTime           String?
+  gunTime            String?
+  verifiedBy         String?
+  verificationMethod String?
+  createdAt          DateTime    @default(now())
+  participant        Participant @relation(fields: [participantId], references: [id])
+
   @@unique([participantId, checkPoint])
   @@index([participantId])
   @@index([checkPoint])
   @@index([checkTime])
 }
 
-// ==================== CERTIFICATES ====================
 model Certificate {
-  id               String    @id @default(cuid())
-  
-  participant      Participant @relation(fields: [participantId], references: [id])
-  participantId    String    @unique
-  
-  // Certificate Info
-  certificateNumber String   @unique @default(cuid())
-  finishTime       String?   // Official finish time
-  rank             Int?      // Position in category
-  categoryRank     Int?      // Position in age group
-  
-  // File Info
-  fileUrl          String?   // URL to PDF/image
-  
-  // Status
-  isGenerated      Boolean   @default(false)
-  generatedAt      DateTime?
-  downloadCount    Int       @default(0)
-  lastDownloadAt   DateTime?
-  
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  
+  id                String      @id @default(cuid())
+  participantId     String      @unique
+  certificateNumber String      @unique @default(cuid())
+  finishTime        String?
+  rank              Int?
+  categoryRank      Int?
+  fileUrl           String?
+  isGenerated       Boolean     @default(false)
+  generatedAt       DateTime?
+  downloadCount     Int         @default(0)
+  lastDownloadAt    DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  participant       Participant @relation(fields: [participantId], references: [id])
+
   @@index([certificateNumber])
 }
 
-// ==================== ADMIN USERS ====================
 model Admin {
-  id               String    @id @default(cuid())
-  
-  email            String    @unique
-  password         String    // Hashed password
-  name             String
-  role             String    @default("ADMIN") // SUPER_ADMIN/ADMIN/VOLUNTEER
-  
-  isActive         Boolean   @default(true)
-  lastLogin        DateTime?
-  
-  // Activity logs
-  logs             AdminLog[]
-  
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  
+  id        String     @id @default(cuid())
+  email     String     @unique
+  password  String
+  name      String
+  role      String     @default("ADMIN")
+  isActive  Boolean    @default(true)
+  lastLogin DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  logs      AdminLog[]
+
   @@index([email])
 }
 
 model AdminLog {
-  id               String    @id @default(cuid())
-  
-  admin            Admin     @relation(fields: [adminId], references: [id])
-  adminId          String
-  
-  action           String    // LOGIN/LOGOUT/UPDATE_PAYMENT/VERIFY_PACK/etc
-  details          Json?     // Additional info about the action
-  ipAddress        String?
-  userAgent        String?
-  
-  createdAt        DateTime  @default(now())
-  
+  id        String   @id @default(cuid())
+  adminId   String
+  action    String
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  admin     Admin    @relation(fields: [adminId], references: [id])
+
   @@index([adminId])
   @@index([action])
   @@index([createdAt])
 }
 
-// ==================== SETTINGS ====================
 model Setting {
-  id               String    @id @default(cuid())
-  key              String    @unique
-  value            Json
-  description      String?
-  
-  updatedAt        DateTime  @updatedAt
-  
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+
   @@index([key])
 }
 
-// ==================== NOTIFICATIONS ====================
 model Notification {
-  id               String    @id @default(cuid())
-  
-  // Target
-  recipientEmail   String?
-  recipientPhone   String?
-  participantId    String?
-  
-  // Content
-  type             String    // EMAIL/WHATSAPP/SMS
-  category         String    // REGISTRATION/PAYMENT/REMINDER/INFO
-  subject          String?
-  message          String    @db.Text
-  
-  // Status
-  status           String    @default("PENDING") // PENDING/SENT/FAILED
-  sentAt           DateTime?
-  failureReason    String?
-  
-  // Metadata
-  metadata         Json?     // Additional data like WhatsApp message ID
-  
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  
+  id             String    @id @default(cuid())
+  recipientEmail String?
+  recipientPhone String?
+  participantId  String?
+  type           String
+  category       String
+  subject        String?
+  message        String
+  status         String    @default("PENDING")
+  sentAt         DateTime?
+  failureReason  String?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
   @@index([participantId])
   @@index([type])
   @@index([status])

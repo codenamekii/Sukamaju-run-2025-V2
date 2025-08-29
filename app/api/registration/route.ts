@@ -1,213 +1,171 @@
-// app/api/registration/route.ts
-import { Prisma, PrismaClient } from '@prisma/client';
+import { calculateRegistrationPrice } from '@/lib/utils/pricing';
+import { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
-// Validation schema
-const registrationSchema = z.object({
-  // Personal Info
-  fullName: z.string().min(3, 'Nama minimal 3 karakter'),
-  gender: z.enum(['L', 'P']),
-  dateOfBirth: z.string(),
-  idNumber: z.string().length(16, 'NIK harus 16 digit'),
-  bloodType: z.string().optional(),
-
-  // Contact Info
-  email: z.string().email('Email tidak valid'),
-  whatsapp: z.string().regex(/^62[0-9]{9,12}$/, 'Format WhatsApp tidak valid'),
-  address: z.string().min(10, 'Alamat minimal 10 karakter'),
-  province: z.string(),
-  city: z.string(),
-  postalCode: z.string().optional(),
-
-  // Race Info
-  category: z.enum(['5K', '10K']),
-  bibName: z.string().max(10, 'Nama BIB maksimal 10 karakter'),
-  jerseySize: z.enum(['S', 'M', 'L', 'XL', 'XXL', 'XXXL']),
-  estimatedTime: z.string().optional(),
-
-  // Emergency Contact
-  emergencyName: z.string().min(3),
-  emergencyPhone: z.string(),
-  emergencyRelation: z.string(),
-  medicalHistory: z.string().optional(),
-  allergies: z.string().optional(),
-  medications: z.string().optional(),
-});
-
-// Helper function to check quota
-async function checkQuota(category: string): Promise<boolean> {
-  const count = await prisma.participant.count({
-    where: {
-      category,
-      registrationStatus: { not: 'CANCELLED' }
-    }
-  });
-
-  const limit = category === '5K' ? 300 : 200; // Adjust based on your limits
-  return count < limit;
-}
-
 // Helper function to generate BIB number
-async function generateBibNumber(category: string): Promise<string> {
-  const count = await prisma.participant.count({
-    where: { category }
-  });
-
+async function generateBibNumber(category: '5K' | '10K'): Promise<string> {
+  const count = await prisma.participant.count({ where: { category } });
   const prefix = category === '5K' ? '5' : '10';
   const number = (count + 1).toString().padStart(3, '0');
   return `${prefix}${number}`;
 }
 
 // Helper function to calculate price
-function calculatePrice(category: string, jerseySize: string, isEarlyBird: boolean) {
-  // Base prices
+function calculatePrice(category: string, jerseySize: string, registrationType: string) {
+  // Fixed prices - no early bird
   let basePrice = 0;
-  if (category === '5K') {
-    basePrice = isEarlyBird ? 85000 : 100000;
-  } else if (category === '10K') {
-    basePrice = isEarlyBird ? 135000 : 150000;
+
+  if (registrationType === 'COMMUNITY') {
+    // Community prices (5% discount)
+    if (category === '5K') {
+      basePrice = 171000; // Rp 171.000
+    } else if (category === '10K') {
+      basePrice = 218000; // Rp 218.000
+    }
+  } else {
+    // Individual prices
+    if (category === '5K') {
+      basePrice = 180000;
+    } else if (category === '10K') {
+      basePrice = 230000;
+    }
   }
 
-  // Jersey add-on for XL+
-  const jerseyAddOn = ['XL', 'XXL', 'XXXL'].includes(jerseySize) ? 20000 : 0;
+  // Jersey add-on ONLY for XXL and XXXL
+  const jerseyAddOn = ['XXL', 'XXXL'].includes(jerseySize) ? 20000 : 0;
+
+  // Remove early bird logic since prices are fixed
+  const isEarlyBird = false;
 
   return {
     basePrice,
     jerseyAddOn,
-    totalPrice: basePrice + jerseyAddOn
+    totalPrice: basePrice + jerseyAddOn,
+    isEarlyBird
   };
 }
 
-// POST - Create new registration
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // Validate input
-    const validatedData = registrationSchema.parse(body);
-
     // Check if email already exists
     const existingParticipant = await prisma.participant.findUnique({
-      where: { email: validatedData.email }
+      where: { email: body.email },
     });
 
     if (existingParticipant) {
-      return NextResponse.json(
-        { error: 'Email sudah terdaftar' },
-        { status: 400 }
-      );
-    }
-
-    // Check quota
-    const hasQuota = await checkQuota(validatedData.category);
-    if (!hasQuota) {
-      return NextResponse.json(
-        { error: 'Kuota kategori ini sudah penuh' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Email sudah terdaftar' }, { status: 400 });
     }
 
     // Check age eligibility
-    const birthDate = new Date(validatedData.dateOfBirth);
-    const today = new Date();
-    const age = today.getFullYear() - birthDate.getFullYear();
+    const birthDate = new Date(body.dateOfBirth);
+    const age = new Date().getFullYear() - birthDate.getFullYear();
 
-    if (validatedData.category === '5K' && age < 12) {
+    if ((body.category === '5K' && age < 12) || (body.category === '10K' && age < 17)) {
       return NextResponse.json(
-        { error: 'Minimal usia 12 tahun untuk kategori 5K' },
+        {
+          error:
+            body.category === '5K'
+              ? 'Minimal usia 12 tahun untuk kategori 5K'
+              : 'Minimal usia 17 tahun untuk kategori 10K',
+        },
         { status: 400 }
       );
     }
-
-    if (validatedData.category === '10K' && age < 17) {
-      return NextResponse.json(
-        { error: 'Minimal usia 17 tahun untuk kategori 10K' },
-        { status: 400 }
-      );
-    }
-
-    // Check early bird (before August 31, 2025)
-    const earlyBirdDeadline = new Date('2025-08-31');
-    const isEarlyBird = today < earlyBirdDeadline;
 
     // Calculate pricing
-    const pricing = calculatePrice(
-      validatedData.category,
-      validatedData.jerseySize,
-      isEarlyBird
-    );
+    const pricing = calculateRegistrationPrice(body.category, body.jerseySize);
 
     // Generate BIB number
-    const bibNumber = await generateBibNumber(validatedData.category);
+    const bibNumber = await generateBibNumber(body.category);
 
-    // Create participant with all relations
-    const participant = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      const newParticipant = await tx.participant.create({
+    // Generate registration code (random 6 digit)
+    const registrationCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    // Create participant with relations in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const participant = await tx.participant.create({
         data: {
-          ...validatedData,
-          dateOfBirth: new Date(validatedData.dateOfBirth),
+          fullName: body.fullName,
+          gender: body.gender,
+          dateOfBirth: birthDate,
+          idNumber: body.idNumber,
+          bloodType: body.bloodType || null,
+          email: body.email,
+          whatsapp: body.whatsapp,
+          address: body.address,
+          province: body.province,
+          city: body.city,
+          postalCode: body.postalCode || null,
+          category: body.category,
+          bibName: body.bibName,
+          jerseySize: body.jerseySize,
+          estimatedTime: body.estimatedTime || null,
+          emergencyName: body.emergencyName,
+          emergencyPhone: body.emergencyPhone,
+          emergencyRelation: body.emergencyRelation,
+          medicalHistory: body.medicalHistory || null,
+          allergies: body.allergies || null,
+          medications: body.medications || null,
           bibNumber,
-          isEarlyBird,
-          ...pricing,
+          registrationCode,
           registrationType: 'INDIVIDUAL',
+          basePrice: pricing.basePrice,
+          jerseyAddOn: pricing.jerseyAddOn,
+          totalPrice: pricing.totalPrice,
+          isEarlyBird: false,
+          registrationStatus: 'PENDING',
         },
       });
 
-      // Create race pack record
-      await tx.racePack.create({
+      const racePack = await tx.racePack.create({
         data: {
-          participantId: newParticipant.id,
+          participantId: participant.id,
           hasJersey: true,
           hasBib: true,
-          hasGoodieBag: true
-        }
+          hasGoodieBag: true,
+        },
       });
 
-      // Create payment record
       const payment = await tx.payment.create({
         data: {
-          participantId: newParticipant.id,
+          participantId: participant.id,
           amount: pricing.totalPrice,
           status: 'PENDING',
-          expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
-        }
+          expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
       });
 
-      return { participant: newParticipant, payment };
+      return { participant, racePack, payment };
     });
 
     return NextResponse.json({
       success: true,
       data: {
-        registrationCode: participant.participant.registrationCode,
-        bibNumber: participant.participant.bibNumber,
+        registrationCode: result.participant.registrationCode,
+        bibNumber: result.participant.bibNumber,
         totalPrice: pricing.totalPrice,
-        paymentCode: participant.payment.paymentCode,
-        participant: participant.participant
-      }
+        paymentCode: result.payment.paymentCode,
+        participant: {
+          id: result.participant.id,
+          fullName: result.participant.fullName,
+          email: result.participant.email,
+          category: result.participant.category,
+        },
+      },
     });
-
   } catch (error) {
     console.error('Registration error:', error);
-
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Data tidak valid', details: error.issues },
-        { status: 400 }
-      );
-    }
-
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mendaftar' },
+      { error: 'Terjadi kesalahan saat mendaftar', details: process.env.NODE_ENV === 'development' ? error : undefined },
       { status: 500 }
     );
   }
 }
 
-// GET - Check registration status
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -215,45 +173,26 @@ export async function GET(request: NextRequest) {
     const email = searchParams.get('email');
 
     if (!registrationCode && !email) {
-      return NextResponse.json(
-        { error: 'Kode registrasi atau email harus diisi' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Kode registrasi atau email harus diisi' }, { status: 400 });
     }
 
     const participant = await prisma.participant.findFirst({
       where: {
         OR: [
           { registrationCode: registrationCode || undefined },
-          { email: email || undefined }
-        ]
+          { email: email || undefined },
+        ],
       },
-      include: {
-        payments: {
-          orderBy: { createdAt: 'desc' },
-          take: 1
-        },
-        racePack: true
-      }
+      include: { payments: { orderBy: { createdAt: 'desc' }, take: 1 }, racePack: true },
     });
 
     if (!participant) {
-      return NextResponse.json(
-        { error: 'Peserta tidak ditemukan' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Peserta tidak ditemukan' }, { status: 404 });
     }
 
-    return NextResponse.json({
-      success: true,
-      data: participant
-    });
-
+    return NextResponse.json({ success: true, data: { participant, payment: participant.payments[0] || null } });
   } catch (error) {
     console.error('Error fetching participant:', error);
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Terjadi kesalahan' }, { status: 500 });
   }
 }

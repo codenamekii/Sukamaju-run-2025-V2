@@ -1,5 +1,4 @@
-"use client";
-
+import { Timeline } from "@/components/ui/timeline";
 import { ArrowLeft, Calendar, Clock, MapPin } from "lucide-react";
 import Link from "next/link";
 
@@ -56,7 +55,7 @@ export default function SchedulePage() {
       <header className="bg-primary text-white py-4">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center text-white hover:text-secondary transition">
+            <Link href="/" className="flex items-center text-white">
               <ArrowLeft className="w-5 h-5 mr-2" />
               Kembali
             </Link>
@@ -77,42 +76,7 @@ export default function SchedulePage() {
           </p>
 
           {/* Timeline */}
-          <div className="relative">
-            <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gray-300"></div>
-
-            {timeline.map((event, index) => (
-              <div key={index} className={`relative flex items-start mb-8 ${event.highlight ? 'scale-105' : ''}`}>
-                {/* Icon */}
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center z-10 ${event.highlight
-                    ? 'bg-gradient-to-br from-secondary to-accent'
-                    : 'bg-white border-4 border-primary'
-                  }`}>
-                  <div className={event.highlight ? 'text-tangaroa' : 'text-primary'}>
-                    {event.icon}
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className={`ml-6 flex-1 ${event.highlight ? 'bg-gradient-to-r from-primary to-torea-bay text-white' : 'bg-white'} rounded-xl shadow-lg p-6`}>
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-2">
-                    <h3 className={`text-xl font-bold ${event.highlight ? 'text-white' : 'text-primary'}`}>
-                      {event.title}
-                    </h3>
-                    <span className={`text-sm font-semibold ${event.highlight ? 'text-secondary' : 'text-secondary'}`}>
-                      {event.date}
-                    </span>
-                  </div>
-                  <p className={`mb-2 ${event.highlight ? 'text-white/90' : 'text-gray-600'}`}>
-                    {event.description}
-                  </p>
-                  <div className={`flex items-center text-sm ${event.highlight ? 'text-secondary' : 'text-gray-500'}`}>
-                    <Clock className="w-4 h-4 mr-1" />
-                    {event.time}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <Timeline items={timeline} />
 
           {/* CTA */}
           <div className="text-center mt-12">

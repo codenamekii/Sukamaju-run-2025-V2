@@ -1,33 +1,34 @@
-import { snap } from '@/lib/midtrans';
+// app/api/payment/create/route.ts
 import { PrismaClient } from '@prisma/client';
+import midtransClient from 'midtrans-client';
 import { NextRequest, NextResponse } from 'next/server';
 
 const prisma = new PrismaClient();
 
+// Initialize Midtrans Snap
+const snap = new midtransClient.Snap({
+  isProduction: false, // Set to true for production
+  serverKey: process.env.MIDTRANS_SERVER_KEY || '',
+  clientKey: process.env.MIDTRANS_CLIENT_KEY || ''
+});
+
 export async function POST(request: NextRequest) {
   try {
-    const { registrationCode, paymentCode } = await request.json();
+    const { registrationCode } = await request.json();
 
-    if (!registrationCode && !paymentCode) {
+    if (!registrationCode) {
       return NextResponse.json(
-        { error: 'Kode registrasi atau kode pembayaran harus diisi' },
+        { error: 'Kode registrasi harus diisi' },
         { status: 400 }
       );
     }
 
     // Find participant and payment
     const participant = await prisma.participant.findFirst({
-      where: {
-        registrationCode: registrationCode || undefined
-      },
+      where: { registrationCode },
       include: {
         payments: {
-          where: {
-            OR: [
-              { paymentCode: paymentCode || undefined },
-              { status: 'PENDING' }
-            ]
-          },
+          where: { status: 'PENDING' },
           orderBy: { createdAt: 'desc' },
           take: 1
         }
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
     let payment = participant.payments[0];
 
     // If no pending payment, create new one
-    if (!payment || payment.status !== 'PENDING') {
+    if (!payment) {
       payment = await prisma.payment.create({
         data: {
           participantId: participant.id,
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
         }
       ],
       callbacks: {
-        finish: `${process.env.NEXT_PUBLIC_APP_URL}/registration/success?order_id=${orderId}`
+        finish: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/registration/success?order_id=${orderId}`
       },
       expiry: {
         unit: 'hours',
@@ -114,40 +115,70 @@ export async function POST(request: NextRequest) {
         id: `${participant.registrationCode}-JERSEY`,
         price: participant.jerseyAddOn,
         quantity: 1,
-        name: 'Tambahan Biaya Jersey (XL+)',
+        name: `Tambahan Biaya Jersey (${participant.jerseySize})`,
         category: 'ADDON'
       });
     }
 
-    // Create transaction token
-    const transaction = await snap.createTransaction(parameter) as {
-      token: string;
-      redirect_url: string;
-      [key: string]: unknown;
-    };
+    try {
+      // Create transaction token with Midtrans
+      const transaction = await snap.createTransaction(parameter);
 
-    // Update payment with Midtrans info
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        midtransOrderId: orderId,
-        midtransToken: transaction.token,
-        midtransResponse: transaction as unknown
+      // Update payment with Midtrans info
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          midtransOrderId: orderId,
+          midtransToken: transaction.token,
+          midtransResponse: transaction as unknown as object
+        }
+      });
+
+      return NextResponse.json({
+        success: true,
+        token: transaction.token,
+        redirectUrl: transaction.redirect_url,
+        orderId,
+        paymentCode: payment.paymentCode
+      });
+
+    } catch (midtransError: unknown) {
+      console.error('Midtrans error:', midtransError);
+
+      // Fallback for testing without valid Midtrans credentials
+      if (process.env.NODE_ENV === 'development') {
+        // Generate mock token for testing
+        const mockToken = `mock-token-${Date.now()}`;
+
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            midtransOrderId: orderId,
+            midtransToken: mockToken
+          }
+        });
+
+        return NextResponse.json({
+          success: true,
+          token: mockToken,
+          redirectUrl: '#',
+          orderId,
+          paymentCode: payment.paymentCode,
+          testMode: true,
+          message: 'Test mode - Midtrans not configured. Payment simulation only.'
+        });
       }
-    });
 
-    return NextResponse.json({
-      success: true,
-      token: transaction.token,
-      redirectUrl: transaction.redirect_url,
-      orderId,
-      paymentCode: payment.paymentCode
-    });
+      throw midtransError;
+    }
 
   } catch (error) {
     console.error('Payment creation error:', error);
     return NextResponse.json(
-      { error: 'Gagal membuat transaksi pembayaran' },
+      {
+        error: 'Gagal membuat transaksi pembayaran',
+        details: process.env.NODE_ENV === 'development' ? error : undefined
+      },
       { status: 500 }
     );
   }

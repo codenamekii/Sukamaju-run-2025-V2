@@ -1,4 +1,4 @@
-import { BloodType, EmergencyRelation, Gender, JerseySize, Nationality } from './registration';
+import { BloodType, Category, EmergencyRelation, Gender, JerseySize, Nationality } from './registration';
 
 export interface CommunityMember {
   // Personal Info
@@ -26,6 +26,7 @@ export interface CommunityMember {
 }
 
 export interface CommunityRegistrationData {
+  category: Category;
   // Community Info
   communityName: string;
   picName: string; // Person in Charge
@@ -48,20 +49,24 @@ export interface CommunityRegistrationData {
 }
 
 export interface CommunityPriceCalculation {
+  basePrice: number;            // Harga dasar per orang
   baseMembers: number;          // Jumlah member yang bayar
   freeMembers: number;          // Jumlah member gratis (bonus)
   totalMembers: number;         // Total semua member
-  pricePerPerson: number;       // Harga per orang (151.000)
+  pricePerPerson: number;       // Harga per orang (misalnya 151.000)
   subtotal: number;             // baseMembers * pricePerPerson
+  jerseyAddOnTotal: number;     // Total biaya tambahan jersey
   jerseyAdjustments: {
     memberName: string;
     size: JerseySize;
     adjustment: number;
   }[];
   totalJerseyAdjustment: number;
-  totalPrice: number;
+  totalBase: number;            // totalMembers × basePrice
+  totalPrice: number;           // subtotal + jerseyAddOnTotal
   savings: number;              // Berapa yang dihemat dari promo
 }
+
 
 // Constants for community registration
 export const COMMUNITY_CONSTANTS = {

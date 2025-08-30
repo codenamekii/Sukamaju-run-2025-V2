@@ -1,9 +1,8 @@
 // app/registration/components/step-5-payment.tsx
 'use client';
 
-import type { Snap } from '@/components/registration/payment-modal';
 import { calculateIndividualPrice } from '@/lib/config/pricing';
-import { AlertCircle, ArrowLeft, Clock, CreditCard } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -53,8 +52,7 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
-
-  // Calculate pricing
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const pricing = calculateIndividualPrice(
     formData.category as '5K' | '10K',
@@ -70,33 +68,31 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
   };
 
   const handleSubmit = async () => {
+    if (!termsAccepted) {
+      setError('Anda harus menyetujui syarat dan ketentuan');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       setError('');
 
-      // Prepare data for API
+      // Prepare registration data
       const registrationData = {
-        // Personal Info
         fullName: formData.personalInfo.fullName,
         gender: formData.personalInfo.gender,
         dateOfBirth: formData.personalInfo.dateOfBirth,
         idNumber: formData.personalInfo.idNumber,
         bloodType: formData.emergencyContact.bloodType || '',
-
-        // Contact Info
         email: formData.personalInfo.email,
         whatsapp: formData.personalInfo.whatsapp,
         address: formData.personalInfo.address,
         province: formData.personalInfo.province,
         city: formData.personalInfo.city,
         postalCode: formData.personalInfo.postalCode || '',
-
-        // Race Info
         category: formData.category,
         bibName: formData.personalInfo.bibName,
         jerseySize: formData.personalInfo.jerseySize,
-
-        // Emergency Contact
         emergencyName: formData.emergencyContact.name,
         emergencyPhone: formData.emergencyContact.phone,
         emergencyRelation: formData.emergencyContact.relationship,
@@ -105,9 +101,7 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
         medications: formData.emergencyContact.medications || ''
       };
 
-      console.log('Submitting registration:', registrationData);
-
-      // Call Registration API
+      // Submit registration
       const response = await fetch('/api/registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -115,65 +109,17 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
       });
 
       const result = await response.json();
-      console.log('Registration response:', result);
 
       if (!response.ok) {
         throw new Error(result.error || 'Registration failed');
       }
 
-      // Registration successful
-      const { registrationCode, bibNumber, totalPrice } = result.data;
+      // Registration successful - get registration code
+      const { registrationCode } = result.data;
 
-      // Show success message
-      alert(`
-        Registrasi Berhasil!
-        
-        Kode Registrasi: ${registrationCode}
-        Nomor BIB: ${bibNumber}
-        Total Pembayaran: ${formatCurrency(totalPrice)}
-        
-        Silakan lanjutkan ke pembayaran.
-      `);
-
-      // Try to create payment (optional - if payment API is ready)
-      try {
-        const paymentResponse = await fetch('/api/payment/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ registrationCode })
-        });
-
-        const paymentResult = await paymentResponse.json();
-        console.log('Payment response:', paymentResult);
-
-        if (paymentResult.success) {
-          // If using Midtrans
-          if (paymentResult.token && window.snap) {
-            window.snap.pay(paymentResult.token, {
-              onSuccess: function () {
-                router.push(`/registration/success?code=${registrationCode}`);
-              },
-              onPending: function () {
-                router.push(`/registration/pending?code=${registrationCode}`);
-              },
-              onError: function () {
-                alert('Payment failed. Please try again.');
-              },
-              onClose: function () {
-                // User closed the popup without finishing payment
-                router.push(`/registration/pending?code=${registrationCode}`);
-              }
-            });
-          } else {
-            // No payment gateway, just redirect to success
-            router.push(`/registration/success?code=${registrationCode}`);
-          }
-        }
-      } catch (paymentError) {
-        console.log('Payment API not ready, skipping payment:', paymentError);
-        // Payment API not ready, just show success
-        router.push(`/registration/success?code=${registrationCode}`);
-      }
+      // FLOW BARU: Redirect ke custom payment page
+      // Tidak langsung ke success page
+      router.push(`/registration/payment?code=${registrationCode}&type=INDIVIDUAL`);
 
       // Call onSuccess callback if provided
       if (onSuccess) {
@@ -183,7 +129,6 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
     } catch (error) {
       console.error('Registration error:', error);
       setError(error instanceof Error ? error.message : 'Registration failed. Please try again.');
-      alert('Registration failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsSubmitting(false);
     }
@@ -194,8 +139,8 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
       <div className="bg-white rounded-lg shadow-lg p-6 space-y-6">
         {/* Header */}
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Konfirmasi & Pembayaran</h2>
-          <p className="text-gray-600">Periksa data Anda dan lanjutkan ke pembayaran</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Review & Konfirmasi</h2>
+          <p className="text-gray-600">Periksa kembali data Anda sebelum melanjutkan ke pembayaran</p>
         </div>
 
         {/* Error Message */}
@@ -253,6 +198,16 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
                 <span className="text-gray-500">No. Telepon:</span>
                 <p className="font-medium">{formData.emergencyContact.phone}</p>
               </div>
+              <div>
+                <span className="text-gray-500">Hubungan:</span>
+                <p className="font-medium">{formData.emergencyContact.relationship}</p>
+              </div>
+              {formData.emergencyContact.bloodType && (
+                <div>
+                  <span className="text-gray-500">Golongan Darah:</span>
+                  <p className="font-medium">{formData.emergencyContact.bloodType}</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -260,11 +215,16 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
           <div className="bg-blue-50 rounded-lg p-4">
             <h4 className="font-medium text-gray-700 mb-3">Rincian Biaya</h4>
             <div className="space-y-2">
-              {pricing.breakdown.map((item: string, index: number) => (
-                <div key={index} className="flex justify-between text-sm">
-                  <span>{item}</span>
+              <div className="flex justify-between text-sm">
+                <span>Biaya Registrasi {formData.category}</span>
+                <span>{formatCurrency(pricing.basePrice)}</span>
+              </div>
+              {pricing.jerseyAddOn > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Jersey Size {formData.personalInfo.jerseySize} (Tambahan)</span>
+                  <span>{formatCurrency(pricing.jerseyAddOn)}</span>
                 </div>
-              ))}
+              )}
               <div className="border-t pt-2">
                 <div className="flex justify-between font-semibold">
                   <span>Total Pembayaran</span>
@@ -275,18 +235,34 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
               </div>
             </div>
           </div>
-        {/* Payment Info */}
-        <div className="bg-yellow-50 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <Clock className="w-5 h-5 text-yellow-600 mt-0.5" />
-            <div className="text-sm text-yellow-800">
-              <p className="font-semibold mb-1">Informasi Pembayaran:</p>
-              <ul className="space-y-1">
-                <li>• Pembayaran berlaku 1x24 jam setelah registrasi</li>
-                <li>• Tersedia berbagai metode pembayaran</li>
-                <li>• Konfirmasi otomatis setelah pembayaran berhasil</li>
-              </ul>
-            </div>
+        </div>
+
+        {/* Terms and Conditions */}
+        <div className="border rounded-lg p-4 bg-gray-50">
+          <div className="flex items-start">
+            <input
+              type="checkbox"
+              id="terms"
+              checked={termsAccepted}
+              onChange={(e) => {
+                setTermsAccepted(e.target.checked);
+                if (e.target.checked) {
+                  setError('');
+                }
+              }}
+              className="mt-1 w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+            />
+            <label htmlFor="terms" className="ml-3 text-sm text-gray-700">
+              Saya telah membaca dan menyetujui{' '}
+              <a href="/terms" target="_blank" className="text-primary hover:underline">
+                Syarat & Ketentuan
+              </a>
+              {' '}serta{' '}
+              <a href="/privacy" target="_blank" className="text-primary hover:underline">
+                Kebijakan Privasi
+              </a>
+              {' '}SUKAMAJU RUN 2025. Saya memahami bahwa biaya pendaftaran tidak dapat dikembalikan.
+            </label>
           </div>
         </div>
 
@@ -307,30 +283,28 @@ export default function Step5Payment({ formData, onBack, onSuccess }: Step5Payme
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="flex-1 bg-primary text-white py-2 px-6 rounded-lg hover:bg-primary/90 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isSubmitting || !termsAccepted}
+            className="flex-1 bg-primary text-white py-3 px-6 rounded-lg hover:bg-primary/90 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-all"
           >
             {isSubmitting ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                <span>Memproses...</span>
+                <span>Memproses Registrasi...</span>
               </>
             ) : (
               <>
-                <CreditCard className="w-4 h-4" />
-                <span>Konfirmasi & Lanjut Pembayaran</span>
+                <CheckCircle className="w-5 h-5" />
+                <span>Konfirmasi & Lanjut ke Pembayaran</span>
               </>
             )}
           </button>
         </div>
-      </div>
+
+        {/* Info */}
+        <div className="text-xs text-gray-500 text-center">
+          Setelah klik konfirmasi, Anda akan diarahkan ke halaman pembayaran untuk menyelesaikan registrasi
+        </div>
       </div>
     </div>
   );
-}
-// Declare Midtrans snap for TypeScript
-declare global {
-  interface Window {
-    snap: Snap;
-  }
 }

@@ -1,116 +1,226 @@
-// app/api/midtrans/webhook/route.ts
-import { core } from "@/lib/midtrans";
-import { prisma } from "@/lib/prisma";
-import type { MidtransNotification, MidtransStatusResponse } from "@/lib/types/midtrans";
-import { JsonValue } from "@prisma/client/runtime/library";
-import crypto from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+// app/api/payment/webhook/route.ts
 
-// fungsi verifikasi signature Midtrans
-function verifySignature(
-  orderId: string,
-  statusCode: string,
-  grossAmount: string,
-  serverKey: string,
-  signature: string
-): boolean {
-  const hash = crypto
-    .createHash("sha512")
+import { Prisma, PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
+import { NextRequest, NextResponse } from 'next/server';
+
+const prisma = new PrismaClient();
+
+// Helper untuk verify signature
+function verifySignature(orderId: string, statusCode: string, grossAmount: string, serverKey: string): string {
+  const signature = crypto
+    .createHash('sha512')
     .update(`${orderId}${statusCode}${grossAmount}${serverKey}`)
-    .digest("hex");
-  return hash === signature;
+    .digest('hex');
+  return signature;
 }
 
-// peta status midtrans -> status internal
-function mapStatus(txStatus: MidtransStatusResponse["transaction_status"]) {
-  if (txStatus === "capture" || txStatus === "settlement") {
-    return { paymentStatus: "SUCCESS" as const, participantStatus: "CONFIRMED" as const };
-  }
-  if (txStatus === "cancel" || txStatus === "deny" || txStatus === "expire") {
-    return { paymentStatus: "FAILED" as const, participantStatus: undefined };
-  }
-  if (txStatus === "pending") {
-    return { paymentStatus: "PENDING" as const, participantStatus: undefined };
-  }
-  return { paymentStatus: "PENDING" as const, participantStatus: undefined };
+// Handle OPTIONS request untuk CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Requested-With',
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const notification = (await request.json()) as MidtransNotification;
+    // Skip ngrok browser warning
+    const headers = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'ngrok-skip-browser-warning': 'true'
+    };
 
-    // cek env
-    const serverKey = process.env.MIDTRANS_SERVER_KEY || "";
-    if (!serverKey) {
-      return NextResponse.json({ error: "MIDTRANS_SERVER_KEY kosong" }, { status: 500 });
+    // Parse notification
+    const notification = await request.json();
+
+    console.log('🔔 Webhook notification received:', {
+      order_id: notification.order_id,
+      transaction_status: notification.transaction_status,
+      payment_type: notification.payment_type,
+      status_code: notification.status_code
+    });
+
+    // Untuk testing, log semua data
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Full notification:', JSON.stringify(notification, null, 2));
     }
 
-    // verifikasi signature
-    const isValid = verifySignature(
+    // Verify signature
+    const signatureKey = notification.signature_key;
+    const expectedSignature = verifySignature(
       notification.order_id,
       notification.status_code,
       notification.gross_amount,
-      serverKey,
-      notification.signature_key
+      process.env.MIDTRANS_SERVER_KEY || ''
     );
-    if (!isValid) {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+
+    if (signatureKey !== expectedSignature) {
+      console.error('❌ Invalid signature');
+      console.error('Received:', signatureKey);
+      console.error('Expected:', expectedSignature);
+
+      // Untuk testing di development, tetap proses
+      if (process.env.NODE_ENV !== 'development') {
+        return NextResponse.json(
+          { status: 'error', message: 'Invalid signature' },
+          { status: 401, headers }
+        );
+      }
     }
 
-    // ambil status dari Midtrans (source of truth)
-    const statusResponse = (await core.transaction.status(notification.order_id)) as MidtransStatusResponse;
-
-    // cari payment di DB
+    // Find payment by order ID
     const payment = await prisma.payment.findUnique({
       where: { midtransOrderId: notification.order_id },
-      include: { participant: true },
+      include: {
+        participant: true,
+        communityRegistration: {
+          include: {
+            members: {
+              include: { participant: true }
+            }
+          }
+        }
+      }
     });
 
     if (!payment) {
-      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+      console.error('❌ Payment not found for order:', notification.order_id);
+
+      // Return success anyway untuk Midtrans
+      return NextResponse.json(
+        { status: 'ok', message: 'Payment not found but acknowledged' },
+        { status: 200, headers }
+      );
     }
 
-    // mapping status
-    const { paymentStatus, participantStatus } = mapStatus(statusResponse.transaction_status);
+    // Handle different transaction statuses
+    const transactionStatus = notification.transaction_status;
+    const fraudStatus = notification.fraud_status;
 
-    // ekstrak channel dan VA (aman terhadap variasi response)
-    const vaNumber = Array.isArray(statusResponse.va_numbers)
-      ? statusResponse.va_numbers[0]?.va_number ?? null
-      : null;
+    let paymentStatus = payment.status;
+    let registrationStatus = 'PENDING';
 
-    const paymentChannel =
-      statusResponse.bank ??
-      statusResponse.store ??
-      statusResponse.va_numbers?.[0]?.bank ??
-      null;
+    console.log('📊 Processing status:', { transactionStatus, fraudStatus });
 
-    // update payment
+    if (transactionStatus === 'capture') {
+      if (fraudStatus === 'accept') {
+        paymentStatus = 'PAID';
+        registrationStatus = 'CONFIRMED';
+      }
+    } else if (transactionStatus === 'settlement') {
+      paymentStatus = 'PAID';
+      registrationStatus = 'CONFIRMED';
+    } else if (transactionStatus === 'pending') {
+      paymentStatus = 'PENDING';
+      registrationStatus = 'PENDING';
+    } else if (transactionStatus === 'deny') {
+      paymentStatus = 'FAILED';
+      registrationStatus = 'CANCELLED';
+    } else if (transactionStatus === 'expire') {
+      paymentStatus = 'EXPIRED';
+      registrationStatus = 'CANCELLED';
+    } else if (transactionStatus === 'cancel') {
+      paymentStatus = 'CANCELLED';
+      registrationStatus = 'CANCELLED';
+    }
+
+    console.log('💾 Updating payment status to:', paymentStatus);
+
+    // Update payment status
     await prisma.payment.update({
       where: { id: payment.id },
       data: {
         status: paymentStatus,
-        paidAt: paymentStatus === "SUCCESS" ? new Date() : null,
-        paymentMethod: statusResponse.payment_type ?? null,
-        paymentChannel,
-        vaNumber,
-        midtransResponse: statusResponse as JsonValue,
-      },
+        paymentMethod: notification.payment_type,
+        paymentChannel: notification.bank || notification.store || notification.issuer || null,
+        vaNumber: notification.va_numbers?.[0]?.va_number || null,
+        paidAt: paymentStatus === 'PAID' ? new Date() : null,
+        midtransResponse: notification as Prisma.JsonObject
+      }
     });
 
-    // update participant bila sukses
-    if (paymentStatus === "SUCCESS" && payment.participantId) {
+    // Update registration status
+    if (payment.participantId) {
+      // Individual registration
       await prisma.participant.update({
         where: { id: payment.participantId },
-        data: { registrationStatus: "CONFIRMED" },
+        data: { registrationStatus }
       });
 
-      // tempatkan notifikasi WA/Email di sini bila dibutuhkan
-      // await sendWhatsAppConfirmation(payment.participant);
+      console.log(`✅ Updated participant ${payment.participantId} status to ${registrationStatus}`);
+
+    } else if (payment.communityRegistrationId && payment.communityRegistration) {
+      // Community registration
+      await prisma.communityRegistration.update({
+        where: { id: payment.communityRegistrationId },
+        data: { registrationStatus }
+      });
+
+      // Update all community members
+      const memberIds = payment.communityRegistration.members.map(m => m.participantId);
+      await prisma.participant.updateMany({
+        where: { id: { in: memberIds } },
+        data: { registrationStatus }
+      });
+
+      console.log(`✅ Updated community ${payment.communityRegistrationId} and ${memberIds.length} members to ${registrationStatus}`);
     }
 
-    return NextResponse.json({ success: true, message: "Webhook processed" });
-  } catch (err) {
-    console.error("Webhook error:", err);
-    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
+    // Send WhatsApp notification if payment successful
+    if (paymentStatus === 'PAID') {
+      console.log('📱 Payment confirmed! Sending WhatsApp notification...');
+
+      // TODO: Implement WhatsApp notification
+      // await WhatsAppService.sendPaymentConfirmation(payment);
+    }
+
+    // Return success response untuk Midtrans
+    return NextResponse.json(
+      {
+        status: 'ok',
+        message: 'Webhook processed successfully'
+      },
+      { status: 200, headers }
+    );
+
+  } catch (error) {
+    console.error('❌ Webhook processing error:', error);
+
+    // Return success anyway untuk prevent retry dari Midtrans
+    return NextResponse.json(
+      {
+        status: 'error',
+        message: 'Internal error but acknowledged',
+        error: process.env.NODE_ENV === 'development' ? error : undefined
+      },
+      { status: 200 } // Return 200 untuk prevent retry
+    );
   }
+}
+
+// GET method untuk testing dan health check
+export async function GET() {
+  // Set headers untuk skip ngrok warning
+  const headers = {
+    'ngrok-skip-browser-warning': 'true',
+    'Content-Type': 'application/json'
+  };
+
+  return NextResponse.json(
+    {
+      status: 'ok',
+      message: 'Webhook endpoint is working',
+      url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payment/webhook`,
+      environment: process.env.NODE_ENV,
+      timestamp: new Date().toISOString()
+    },
+    { headers }
+  );
 }

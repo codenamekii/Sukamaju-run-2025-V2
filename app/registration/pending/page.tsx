@@ -1,5 +1,3 @@
-// app/api/payment/status/route.ts
-
 import { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -12,7 +10,7 @@ export async function GET(request: NextRequest) {
 
     if (!registrationCode) {
       return NextResponse.json(
-        { error: 'Registration code required' },
+        { error: 'Masukkan Kode Registrasi' },
         { status: 400 }
       );
     }
@@ -48,12 +46,12 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: 'Payment not found' },
+      { error: 'Pembayaran Tidak Ditemukan' },
       { status: 404 }
     );
 
   } catch (error) {
-    console.error('Error checking payment status:', error);
+    console.error('Error checking status pembayaran:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -1,5 +1,4 @@
 // scripts/test-payment.ts
-
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -25,6 +24,12 @@ function log(message: string, type: 'info' | 'success' | 'error' | 'warning' | '
   }[type];
 
   console.log(`${color}${message}${colors.reset}`);
+}
+
+interface Member {
+  name: string;
+  email: string;
+  bibNumber: string | number;
 }
 
 async function testPaymentFlow() {
@@ -134,8 +139,8 @@ async function testPaymentFlow() {
       log(`   Total Price: Rp ${communityResult.data.totalPrice.toLocaleString('id-ID')}`, 'success');
 
       log('\n   Members:', 'info');
-      communityResult.data.members.forEach((member: any, index: number) => {
-        log(`   ${index + 1}. ${member.name} - BIB: ${member.bibNumber}`, 'info');
+      communityResult.data.members?.forEach((member: Member, index: number) => {
+        log(`   ${index + 1}. ${member.name} - BIB: ${member.bibNumber}`, "info");
       });
     } else {
       log(`❌ Community Registration: FAILED`, 'error');

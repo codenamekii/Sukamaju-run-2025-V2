@@ -1,5 +1,6 @@
 // app/api/payment/create/route.ts
-import { PrismaClient } from '@prisma/client';
+
+import { Prisma, PrismaClient } from '@prisma/client';
 import midtransClient from 'midtrans-client';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -7,65 +8,106 @@ const prisma = new PrismaClient();
 
 // Initialize Midtrans Snap
 const snap = new midtransClient.Snap({
-  isProduction: false, // Set to true for production
+  isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
   serverKey: process.env.MIDTRANS_SERVER_KEY || '',
   clientKey: process.env.MIDTRANS_CLIENT_KEY || ''
 });
 
 export async function POST(request: NextRequest) {
   try {
-    const { registrationCode } = await request.json();
+    const body = await request.json();
+    const { participantId, communityRegistrationId, amount, registrationCode } = body;
 
-    if (!registrationCode) {
+    console.log('💳 Creating payment for:', {
+      participantId,
+      communityRegistrationId,
+      amount
+    });
+
+    // Validate input
+    if (!amount || amount <= 0) {
       return NextResponse.json(
-        { error: 'Kode registrasi harus diisi' },
+        { error: 'Invalid amount' },
         { status: 400 }
       );
     }
 
-    // Find participant and payment
-    const participant = await prisma.participant.findFirst({
-      where: { registrationCode },
-      include: {
-        payments: {
-          where: { status: 'PENDING' },
-          orderBy: { createdAt: 'desc' },
-          take: 1
-        }
-      }
-    });
+    // Get registration details
+    let customerDetails;
+    let itemDetails;
+    let orderId;
 
-    if (!participant) {
-      return NextResponse.json(
-        { error: 'Peserta tidak ditemukan' },
-        { status: 404 }
-      );
-    }
-
-    let payment = participant.payments[0];
-
-    // If no pending payment, create new one
-    if (!payment) {
-      payment = await prisma.payment.create({
-        data: {
-          participantId: participant.id,
-          amount: participant.totalPrice,
-          status: 'PENDING',
-          expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+    if (communityRegistrationId) {
+      // Community registration
+      const community = await prisma.communityRegistration.findUnique({
+        where: { id: communityRegistrationId },
+        include: {
+          members: {
+            include: { participant: true }
+          }
         }
       });
-    }
 
-    // Generate unique order ID
-    const orderId = `SUKAMAJU-${payment.paymentCode}`;
+      if (!community) {
+        return NextResponse.json(
+          { error: 'Community registration not found' },
+          { status: 404 }
+        );
+      }
 
-    // Prepare Midtrans parameter
-    const parameter = {
-      transaction_details: {
-        order_id: orderId,
-        gross_amount: payment.amount
-      },
-      customer_details: {
+      orderId = `COM-${Date.now()}-${community.registrationCode}`;
+
+      customerDetails = {
+        first_name: community.picName,
+        email: community.picEmail,
+        phone: community.picWhatsapp,
+        billing_address: {
+          first_name: community.picName,
+          email: community.picEmail,
+          phone: community.picWhatsapp,
+          address: community.communityAddress,
+        }
+      };
+
+      itemDetails = [
+        {
+          id: community.registrationCode,
+          price: Math.floor(community.totalBasePrice / community.totalMembers),
+          quantity: community.totalMembers,
+          name: `Sukamaju Run 2025 - ${community.category} (Community)`,
+          category: 'Registration',
+          merchant_name: 'Sukamaju Run'
+        }
+      ];
+
+      // Add jersey addon if any
+      if (community.jerseyAddOn > 0) {
+        itemDetails.push({
+          id: `JERSEY-${community.registrationCode}`,
+          price: community.jerseyAddOn,
+          quantity: 1,
+          name: 'Jersey Size XXL/XXXL Addon',
+          category: 'Addon',
+          merchant_name: 'Sukamaju Run'
+        });
+      }
+
+    } else if (participantId) {
+      // Individual registration
+      const participant = await prisma.participant.findUnique({
+        where: { id: participantId }
+      });
+
+      if (!participant) {
+        return NextResponse.json(
+          { error: 'Participant not found' },
+          { status: 404 }
+        );
+      }
+
+      orderId = `IND-${Date.now()}-${participant.registrationCode}`;
+
+      customerDetails = {
         first_name: participant.fullName,
         email: participant.email,
         phone: participant.whatsapp,
@@ -75,110 +117,121 @@ export async function POST(request: NextRequest) {
           phone: participant.whatsapp,
           address: participant.address,
           city: participant.city,
-          postal_code: participant.postalCode || '00000',
-          country_code: 'IDN'
+          postal_code: participant.postalCode || undefined,
         }
-      },
-      item_details: [
+      };
+
+      itemDetails = [
         {
           id: participant.registrationCode,
           price: participant.basePrice,
           quantity: 1,
-          name: `Registrasi ${participant.category} - SUKAMAJU RUN 2025`,
-          category: participant.category,
+          name: `Sukamaju Run 2025 - ${participant.category}`,
+          category: 'Registration',
+          merchant_name: 'Sukamaju Run'
         }
-      ],
+      ];
+
+      // Add jersey addon if any
+      if (participant.jerseyAddOn > 0) {
+        itemDetails.push({
+          id: `JERSEY-${participant.registrationCode}`,
+          price: participant.jerseyAddOn,
+          quantity: 1,
+          name: `Jersey Size ${participant.jerseySize} Addon`,
+          category: 'Addon',
+          merchant_name: 'Sukamaju Run'
+        });
+      }
+    } else {
+      return NextResponse.json(
+        { error: 'Either participantId or communityRegistrationId is required' },
+        { status: 400 }
+      );
+    }
+
+    // Create Midtrans transaction
+    const parameter = {
+      transaction_details: {
+        order_id: orderId,
+        gross_amount: amount
+      },
+      customer_details: customerDetails,
+      item_details: itemDetails,
+      credit_card: {
+        secure: true
+      },
       callbacks: {
-        finish: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/registration/success?order_id=${orderId}`
+        finish: `${process.env.NEXT_PUBLIC_APP_URL}/registration/success?code=${registrationCode}&type=${participantId ? 'INDIVIDUAL' : 'COMMUNITY'}`,
+        error: `${process.env.NEXT_PUBLIC_APP_URL}/registration/payment?code=${registrationCode}&type=${participantId ? 'INDIVIDUAL' : 'COMMUNITY'}&error=true`,
+        pending: `${process.env.NEXT_PUBLIC_APP_URL}/registration/pending?code=${registrationCode}&type=${participantId ? 'INDIVIDUAL' : 'COMMUNITY'}`
       },
       expiry: {
+        start_time: new Date().toISOString().slice(0, 19) + ' +0700',
         unit: 'hours',
         duration: 24
       },
-      enabled_payments: [
-        'credit_card',
-        'bca_va',
-        'bni_va',
-        'bri_va',
-        'permata_va',
-        'other_va',
-        'gopay',
-        'shopeepay',
-        'cstore',
-        'akulaku'
-      ]
+      custom_field1: participantId || communityRegistrationId,
+      custom_field2: participantId ? 'INDIVIDUAL' : 'COMMUNITY',
+      custom_field3: registrationCode
     };
 
-    // Add jersey addon if exists
-    if (participant.jerseyAddOn > 0) {
-      parameter.item_details.push({
-        id: `${participant.registrationCode}-JERSEY`,
-        price: participant.jerseyAddOn,
-        quantity: 1,
-        name: `Tambahan Biaya Jersey (${participant.jerseySize})`,
-        category: 'ADDON'
-      });
-    }
+    console.log('📤 Sending to Midtrans:', { orderId, amount });
 
-    try {
-      // Create transaction token with Midtrans
-      const transaction = await snap.createTransaction(parameter);
+    // Create transaction
+    const transaction = await snap.createTransaction(parameter);
 
-      // Update payment with Midtrans info
+    console.log('✅ Midtrans response:', {
+      token: transaction.token?.substring(0, 20) + '...',
+      redirect_url: transaction.redirect_url
+    });
+
+    // Update payment record in database
+    const payment = await prisma.payment.findFirst({
+      where: {
+        OR: [
+          { participantId: participantId || undefined },
+          { communityRegistrationId: communityRegistrationId || undefined }
+        ],
+        status: 'PENDING'
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (payment) {
       await prisma.payment.update({
         where: { id: payment.id },
         data: {
           midtransOrderId: orderId,
           midtransToken: transaction.token,
-          midtransResponse: transaction as unknown as object
+          midtransResponse: transaction as Prisma.JsonObject
         }
       });
-
-      return NextResponse.json({
-        success: true,
-        token: transaction.token,
-        redirectUrl: transaction.redirect_url,
-        orderId,
-        paymentCode: payment.paymentCode
-      });
-
-    } catch (midtransError: unknown) {
-      console.error('Midtrans error:', midtransError);
-
-      // Fallback for testing without valid Midtrans credentials
-      if (process.env.NODE_ENV === 'development') {
-        // Generate mock token for testing
-        const mockToken = `mock-token-${Date.now()}`;
-
-        await prisma.payment.update({
-          where: { id: payment.id },
-          data: {
-            midtransOrderId: orderId,
-            midtransToken: mockToken
-          }
-        });
-
-        return NextResponse.json({
-          success: true,
-          token: mockToken,
-          redirectUrl: '#',
-          orderId,
-          paymentCode: payment.paymentCode,
-          testMode: true,
-          message: 'Test mode - Midtrans not configured. Payment simulation only.'
-        });
-      }
-
-      throw midtransError;
     }
 
+    return NextResponse.json({
+      success: true,
+      token: transaction.token,
+      redirect_url: transaction.redirect_url,
+      order_id: orderId
+    });
+
   } catch (error) {
-    console.error('Payment creation error:', error);
+    console.error('❌ Payment creation error:', error);
+
+    if (error instanceof Error) {
+      return NextResponse.json(
+        {
+          error: 'Failed to create payment',
+          message: error.message,
+          details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
-      {
-        error: 'Gagal membuat transaksi pembayaran',
-        details: process.env.NODE_ENV === 'development' ? error : undefined
-      },
+      { error: 'Failed to create payment' },
       { status: 500 }
     );
   }

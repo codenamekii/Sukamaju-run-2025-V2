@@ -173,6 +173,8 @@ export default function PaymentPage() {
 
       const result = await response.json();
 
+      console.log("Payment API result:", result);
+
       if (result.success && result.redirect_url) {
         // Redirect to Midtrans
         window.location.href = result.redirect_url;

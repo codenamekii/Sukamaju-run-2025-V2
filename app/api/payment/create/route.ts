@@ -13,6 +13,25 @@ const snap = new midtransClient.Snap({
   clientKey: process.env.MIDTRANS_CLIENT_KEY || ''
 });
 
+// Helper untuk format tanggal sesuai Midtrans
+function formatMidtransDate(date: Date) {
+  const pad = (n: number) => (n < 10 ? "0" + n : n);
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+
+  // Hitung offset timezone
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const offsetHours = pad(Math.floor(Math.abs(offset) / 60));
+  const offsetMinutes = pad(Math.abs(offset) % 60);
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${sign}${offsetHours}${offsetMinutes}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -80,7 +99,6 @@ export async function POST(request: NextRequest) {
         }
       ];
 
-      // Add jersey addon if any
       if (community.jerseyAddOn > 0) {
         itemDetails.push({
           id: `JERSEY-${community.registrationCode}`,
@@ -132,7 +150,6 @@ export async function POST(request: NextRequest) {
         }
       ];
 
-      // Add jersey addon if any
       if (participant.jerseyAddOn > 0) {
         itemDetails.push({
           id: `JERSEY-${participant.registrationCode}`,
@@ -167,7 +184,7 @@ export async function POST(request: NextRequest) {
         pending: `${process.env.NEXT_PUBLIC_APP_URL}/registration/pending?code=${registrationCode}&type=${participantId ? 'INDIVIDUAL' : 'COMMUNITY'}`
       },
       expiry: {
-        start_time: new Date().toISOString().slice(0, 19) + ' +0700',
+        start_time: formatMidtransDate(new Date()), // ✅ sudah sesuai format
         unit: 'hours',
         duration: 24
       },
@@ -176,9 +193,8 @@ export async function POST(request: NextRequest) {
       custom_field3: registrationCode
     };
 
-    console.log('📤 Sending to Midtrans:', { orderId, amount });
+    console.log('📤 Sending to Midtrans:', { orderId, amount, expiry: parameter.expiry.start_time });
 
-    // Create transaction
     const transaction = await snap.createTransaction(parameter);
 
     console.log('✅ Midtrans response:', {
@@ -186,7 +202,7 @@ export async function POST(request: NextRequest) {
       redirect_url: transaction.redirect_url
     });
 
-    // Update payment record in database
+    // Update payment record
     const payment = await prisma.payment.findFirst({
       where: {
         OR: [

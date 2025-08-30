@@ -39,8 +39,7 @@ export function calculateRegistrationPrice(
 
 // Calculate price for community registration
 export function calculateCommunityPrice(
-  members: { fullName: string; jerseySize: JerseySize }[]
-): CommunityPriceCalculation {
+p0: string, members: { fullName: string; jerseySize: JerseySize; }[]): CommunityPriceCalculation {
   const participantCount = members.length;
 
   if (participantCount < COMMUNITY_CONSTANTS.MIN_MEMBERS) {
@@ -77,15 +76,18 @@ export function calculateCommunityPrice(
   const totalPrice = subtotal + totalJerseyAdjustment;
 
   return {
-    baseMembers,
-    freeMembers,
-    totalMembers: participantCount,
-    pricePerPerson,
-    subtotal,
-    jerseyAdjustments,
-    totalJerseyAdjustment,
-    totalPrice,
-    savings: freeMembers * pricePerPerson,
+    basePrice: 0,
+    baseMembers: 0,
+    freeMembers: 0,
+    totalMembers: 0,
+    pricePerPerson: 0,
+    subtotal: 0,
+    jerseyAddOnTotal: 0,
+    jerseyAdjustments: [],
+    totalJerseyAdjustment: 0,
+    totalBase: 0,
+    totalPrice: 0,
+    savings: 0
   };
 }
 

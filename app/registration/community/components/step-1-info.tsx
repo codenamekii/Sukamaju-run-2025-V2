@@ -1,12 +1,13 @@
 "use client";
 
+import { validateCommunityInfo } from "@/app/registration/community/utils/community-helper";
 import { CommunityRegistrationData } from "@/lib/types/community-registration";
 import { PROVINCES } from "@/lib/types/registration";
+import { formatCurrency } from "@/lib/utils/registration";
 import { AlertCircle, ArrowLeft, ArrowRight, Users } from "lucide-react";
 import Link from "next/link";
 import { Dispatch, useState } from "react";
 import { COMMUNITY_PRICING } from "../constants/pricing";
-import { formatCurrency, validateCommunityInfo } from "../utils/community-helpers";
 
 interface Step1InfoProps {
   data: CommunityRegistrationData;
@@ -42,20 +43,29 @@ export default function Step1Info({ data, onChange, onNext }: Step1InfoProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white/10 backdrop-blur rounded-lg p-4">
             <h3 className="font-semibold mb-2">Kategori 5K</h3>
-            <p className="text-2xl font-bold">{formatCurrency(COMMUNITY_PRICING['5K'].community)}</p>
+            <p className="text-2xl font-bold">
+              {formatCurrency(COMMUNITY_PRICING["5K"].community)}
+            </p>
             <p className="text-sm opacity-90">per orang (diskon 5%)</p>
-            <p className="text-xs opacity-75">Normal: {formatCurrency(COMMUNITY_PRICING['5K'].individual)}</p>
+            <p className="text-xs opacity-75">
+              Normal: {formatCurrency(COMMUNITY_PRICING["5K"].individual)}
+            </p>
           </div>
           <div className="bg-white/10 backdrop-blur rounded-lg p-4">
             <h3 className="font-semibold mb-2">Kategori 10K</h3>
-            <p className="text-2xl font-bold">{formatCurrency(COMMUNITY_PRICING['10K'].community)}</p>
+            <p className="text-2xl font-bold">
+              {formatCurrency(COMMUNITY_PRICING["10K"].community)}
+            </p>
             <p className="text-sm opacity-90">per orang (diskon 5%)</p>
-            <p className="text-xs opacity-75">Normal: {formatCurrency(COMMUNITY_PRICING['10K'].individual)}</p>
+            <p className="text-xs opacity-75">
+              Normal: {formatCurrency(COMMUNITY_PRICING["10K"].individual)}
+            </p>
           </div>
         </div>
         <div className="bg-white/10 backdrop-blur rounded-lg p-4 mt-4">
           <p className="text-sm">
-            <strong>Syarat:</strong> Minimal 5 peserta per komunitas • Jersey XXL/XXXL +Rp 20.000
+            <strong>Syarat:</strong> Minimal 5 peserta per komunitas • Jersey
+            XXL/XXXL +Rp 20.000
           </p>
         </div>
       </div>
@@ -75,7 +85,7 @@ export default function Step1Info({ data, onChange, onNext }: Step1InfoProps) {
               <input
                 type="text"
                 value={data.communityName}
-                onChange={(e) => updateField('communityName', e.target.value)}
+                onChange={(e) => updateField("communityName", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Contoh: Jakarta Runner Community"
               />
@@ -87,11 +97,16 @@ export default function Step1Info({ data, onChange, onNext }: Step1InfoProps) {
               </label>
               <select
                 value={data.category}
-                onChange={(e) => updateField('category', e.target.value)}
+                onChange={(e) => updateField("category", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               >
-                <option value="5K">5K - {formatCurrency(COMMUNITY_PRICING['5K'].community)}/orang</option>
-                <option value="10K">10K - {formatCurrency(COMMUNITY_PRICING['10K'].community)}/orang</option>
+                <option value="5K">
+                  5K - {formatCurrency(COMMUNITY_PRICING["5K"].community)}/orang
+                </option>
+                <option value="10K">
+                  10K - {formatCurrency(COMMUNITY_PRICING["10K"].community)}
+                  /orang
+                </option>
               </select>
             </div>
 
@@ -102,7 +117,7 @@ export default function Step1Info({ data, onChange, onNext }: Step1InfoProps) {
               <input
                 type="text"
                 value={data.picName}
-                onChange={(e) => updateField('picName', e.target.value)}
+                onChange={(e) => updateField("picName", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Nama lengkap PIC"
               />
@@ -115,7 +130,7 @@ export default function Step1Info({ data, onChange, onNext }: Step1InfoProps) {
               <input
                 type="tel"
                 value={data.picWhatsapp}
-                onChange={(e) => updateField('picWhatsapp', e.target.value)}
+                onChange={(e) => updateField("picWhatsapp", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="08123456789"
               />
@@ -128,7 +143,7 @@ export default function Step1Info({ data, onChange, onNext }: Step1InfoProps) {
               <input
                 type="email"
                 value={data.picEmail}
-                onChange={(e) => updateField('picEmail', e.target.value)}
+                onChange={(e) => updateField("picEmail", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="pic@example.com"
               />
@@ -140,7 +155,7 @@ export default function Step1Info({ data, onChange, onNext }: Step1InfoProps) {
               </label>
               <textarea
                 value={data.address}
-                onChange={(e) => updateField('address', e.target.value)}
+                onChange={(e) => updateField("address", e.target.value)}
                 rows={3}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Alamat lengkap untuk pengiriman race pack"
@@ -154,7 +169,7 @@ export default function Step1Info({ data, onChange, onNext }: Step1InfoProps) {
               <input
                 type="text"
                 value={data.city}
-                onChange={(e) => updateField('city', e.target.value)}
+                onChange={(e) => updateField("city", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Nama kota"
               />
@@ -166,7 +181,7 @@ export default function Step1Info({ data, onChange, onNext }: Step1InfoProps) {
               </label>
               <select
                 value={data.province}
-                onChange={(e) => updateField('province', e.target.value)}
+                onChange={(e) => updateField("province", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">Pilih Provinsi</option>

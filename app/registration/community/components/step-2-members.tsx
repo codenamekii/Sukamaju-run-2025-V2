@@ -12,7 +12,7 @@ import {
   calculateCommunityPrice,
   emptyMember,
   validateMembers,
-} from "../utils/community-helpers";
+} from "../utils/community-helper";
 import MemberForm from "./member-form";
 import PriceDisplay from "./price-display";
 
@@ -64,11 +64,13 @@ export default function Step2Members({
       savings: raw.savings,
       pricePerPerson: raw.pricePerPerson,
       jerseyAddOnTotal: 0,
-      totalBase: 0
+      totalBase: raw.totalBase ?? 0,
     };
 
     setPriceCalculation(mapped);
   }, [data.members, data.category]);
+
+  
 
   const addMember = () => {
     if (data.members.length < MAX_MEMBERS) {

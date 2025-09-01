@@ -91,7 +91,7 @@ export default function MemberForm({
               </label>
               <input
                 type="text"
-                value={member.fullName}
+                value={member.fullName ? member.fullName : ""}
                 onChange={(e) => onChange(index, "fullName", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Sesuai KTP"
@@ -104,7 +104,7 @@ export default function MemberForm({
               </label>
               <input
                 type="tel"
-                value={member.whatsapp}
+                value={member.whatsapp ? member.whatsapp : ""}
                 onChange={(e) => onChange(index, "whatsapp", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="08123456789"
@@ -117,7 +117,7 @@ export default function MemberForm({
               </label>
               <input
                 type="email"
-                value={member.email}
+                value={member.email ? member.email : ""}
                 onChange={(e) => onChange(index, "email", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="email@example.com"
@@ -130,7 +130,7 @@ export default function MemberForm({
               </label>
               <input
                 type="text"
-                value={member.bibName}
+                value={member.bibName ? member.bibName : ""}
                 onChange={(e) => onChange(index, "bibName", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Nama di BIB"
@@ -143,7 +143,7 @@ export default function MemberForm({
                 Ukuran Jersey *
               </label>
               <select
-                value={member.jerseySize}
+                value={member.jerseySize ? member.jerseySize : ""}
                 onChange={(e) =>
                   onChange(index, "jerseySize", e.target.value as JerseySize)
                 }
@@ -164,7 +164,7 @@ export default function MemberForm({
                 Jenis Kelamin *
               </label>
               <select
-                value={member.gender}
+                value={member.gender ? member.gender : ""}
                 onChange={(e) => onChange(index, "gender", e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               >
@@ -179,7 +179,7 @@ export default function MemberForm({
               </label>
               <input
                 type="date"
-                value={member.dateOfBirth}
+                value={member.dateOfBirth ? member.dateOfBirth : ""}
                 onChange={(e) =>
                   onChange(index, "dateOfBirth", e.target.value)
                 }
@@ -193,7 +193,7 @@ export default function MemberForm({
               </label>
               <input
                 type="text"
-                value={member.identityNumber}
+                value={member.identityNumber ? member.identityNumber : ""}
                 onChange={(e) =>
                   onChange(index, "identityNumber", e.target.value)
                 }
@@ -219,7 +219,7 @@ export default function MemberForm({
                 value={member.emergencyName}
                 onChange={(e) =>
                   onChange(index, "emergencyName", e.target.value)
-                }
+              }
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 placeholder="Nama kontak darurat"
               />

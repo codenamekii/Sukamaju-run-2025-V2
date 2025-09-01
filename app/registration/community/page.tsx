@@ -1,5 +1,3 @@
-// app/registration/community/page.tsx
-
 "use client";
 
 import { CommunityRegistrationData } from "@/lib/types/community-registration";
@@ -10,7 +8,7 @@ import Step1Info from "./components/step-1-info";
 import Step2Members from "./components/step-2-members";
 import Step3Review from "./components/step-3-review";
 import StepIndicator from "./components/step-indicator";
-import { emptyMember } from "./utils/community-helpers";
+import { emptyMember } from "./utils/community-helper";
 
 export default function CommunityRegistrationPage() {
   const [currentStep, setCurrentStep] = useState(1);

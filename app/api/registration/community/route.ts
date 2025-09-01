@@ -1,9 +1,7 @@
 // app/api/registration/community/route.ts
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '@/lib/prisma'; // Import singleton
 import { NextRequest, NextResponse } from 'next/server';
-
-const prisma = new PrismaClient();
 
 // Helper untuk generate BIB numbers
 async function generateBibNumbers(category: '5K' | '10K', count: number): Promise<string[]> {
@@ -51,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for duplicate emails
-    const emails = body.members.map((m: {email : string}) => m.email);
+    const emails = body.members.map((m: { email: string }) => m.email);
     const existingParticipants = await prisma.participant.findMany({
       where: { email: { in: emails } },
       select: { email: true }
@@ -77,7 +75,7 @@ export async function POST(request: NextRequest) {
     // Calculate total prices
     let totalBasePrice = 0;
     let totalJerseyAddOn = 0;
-    const memberPricings = body.members.map((member: {jerseySize:string}) => {
+    const memberPricings = body.members.map((member: { jerseySize: string }) => {
       const pricing = calculateCommunityPrice(body.category, member.jerseySize);
       totalBasePrice += pricing.basePrice;
       totalJerseyAddOn += pricing.jerseyAddOn;
@@ -213,6 +211,9 @@ export async function POST(request: NextRequest) {
         racePacks,
         payment
       };
+    }, {
+      maxWait: 5000, // Wait max 5 seconds
+      timeout: 30000, // Transaction timeout 30 seconds
     });
 
     // Prepare response
@@ -225,7 +226,7 @@ export async function POST(request: NextRequest) {
         totalPrice: result.communityRegistration.finalPrice,
         paymentCode: result.payment.paymentCode,
         qrCode: result.racePacks[0].qrCode, // PIC's QR code
-        members: result.participants.map((p, i) => ({
+        members: result.participants.map((p) => ({
           name: p.fullName,
           bibNumber: p.bibNumber,
           registrationCode: p.registrationCode

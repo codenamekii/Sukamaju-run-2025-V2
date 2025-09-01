@@ -1,5 +1,5 @@
 import { CommunityPriceCalculation } from "@/lib/types/community-registration";
-import { formatCurrency } from "../utils/community-helpers";
+import { formatCurrency } from "@/lib/utils/format";
 
 interface PriceDisplayProps {
   calculation: CommunityPriceCalculation | null;

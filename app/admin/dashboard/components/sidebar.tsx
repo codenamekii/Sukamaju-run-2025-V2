@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   BarChart3,
   CreditCard,
   LayoutDashboard,
@@ -8,6 +9,7 @@ import {
   LucideIcon,
   Mail,
   Menu,
+  Package,
   QrCode,
   Settings,
   Ticket,
@@ -49,8 +51,13 @@ const menuItems: MenuItem[] = [
   },
   {
     name: 'Check-In',
-    href: '/admin/dashboard/check-in',
+    href: '/admin/dashboard/checkin',
     icon: QrCode
+  },
+  {
+    name: 'Racepack',
+    href: '/admin/dashboard/racepacks',
+    icon: Package
   },
   {
     name: 'Communications',
@@ -61,6 +68,11 @@ const menuItems: MenuItem[] = [
     name: 'Reports',
     href: '/admin/dashboard/reports',
     icon: BarChart3
+  },
+  {
+    name: 'Analytics',
+    href: '/admin/dashboard/analytics',
+    icon: Activity
   },
   {
     name: 'Settings',

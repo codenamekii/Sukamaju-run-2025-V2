@@ -1,197 +1,170 @@
-﻿Folder PATH listing
-Volume serial number is 00000024 F6AF:34B5
-D:\CODE\SUKAMAJU-RUN-2025\APP
-|   favicon.ico
-|   globals.css
-|   layout.tsx
-|   page.tsx
-|   
-+---admin
-|   |   page.tsx
-|   |   
-|   +---(auth)
-|   |   \---login
-|   |           page.tsx
-|   |           
-|   \---dashboard
-|       |   layout.tsx
-|       |   page.tsx
-|       |   
-|       +---components
-|       |       header.tsx
-|       |       sidebar.tsx
-|       |       stats-card.tsx
-|       |       stats.tsx
-|       |       types.ts
-|       |       
-|       \---participants
-|               page.tsx
-|               
-+---api
-|   +---admin
-|   |   +---auth
-|   |   |   +---check
-|   |   |   |       route.ts
-|   |   |   |       
-|   |   |   +---login
-|   |   |   |       route.ts
-|   |   |   |       
-|   |   |   +---logout
-|   |   |   |       route.ts
-|   |   |   |       
-|   |   |   \---seed
-|   |   |           route.ts
-|   |   |           
-|   |   +---export
-|   |   |       route.ts
-|   |   |       
-|   |   +---participants
-|   |   |       route.ts
-|   |   |       
-|   |   +---payment
-|   |   |   \---confirm
-|   |   |           route.ts
-|   |   |           
-|   |   \---stats
-|   |           route.ts
-|   |           
-|   +---check-email
-|   |       route.ts
-|   |       
-|   +---payment
-|   |   +---create
-|   |   |       route.ts
-|   |   |       
-|   |   +---status
-|   |   |       route.ts
-|   |   |       
-|   |   \---webhook
-|   |           route.ts
-|   |           
-|   +---provinces
-|   |       route.ts
-|   |       
-|   \---registration
-|       |   route.ts
-|       |   
-|       +---community
-|       |       route.ts
-|       |       
-|       \---community-summary
-|               route.ts
-|               
-+---faq
-|       page.tsx
-|       
-+---payment
-|       page.tsx
-|       
-+---registration
-|   |   page.tsx
-|   |   
-|   +---community
-|   |   |   page.tsx
-|   |   |   
-|   |   +---components
-|   |   |       member-form.tsx
-|   |   |       price-display.tsx
-|   |   |       step-1-info.tsx
-|   |   |       step-2-members.tsx
-|   |   |       step-3-review.tsx
-|   |   |       step-indicator.tsx
-|   |   |       
-|   |   +---constants
-|   |   |       pricing.ts
-|   |   |       
-|   |   +---types
-|   |   |       price.ts
-|   |   |       
-|   |   \---utils
-|   |           community-helper.ts
-|   |           
-|   +---components
-|   |       step-5-payment.tsx
-|   |       
-|   +---payment
-|   |       page.tsx
-|   |       
-|   +---pending
-|   |       page.tsx
-|   |       
-|   \---success
-|           page.tsx
-|           
-+---route
-|       page.tsx
-|       
-\---schedule
-        page.tsx
-        
-Folder PATH listing
-Volume serial number is 00000073 F6AF:34B5
-D:\CODE\SUKAMAJU-RUN-2025\COMPONENTS
-+---layout
-+---registration
-|       payment-modal.tsx
-|       
-+---sections
-\---ui
-        timeline.tsx
-        
-Folder PATH listing
-Volume serial number is 000000AB F6AF:34B5
-D:\CODE\SUKAMAJU-RUN-2025\LIB
-|   auth.ts
-|   midtrans.ts
-|   prisma.ts
-|   
-+---config
-|       pricing.ts
-|       
-+---hooks
-+---services
-|       qrcode.service.ts
-|       registration.service.ts
-|       whatsapp.service.ts
-|       
-+---types
-|       community-registration.ts
-|       midtrans-client.d.ts
-|       midtrans.ts
-|       registration.ts
-|       
-+---utils
-|       cn.ts
-|       community-registration.ts
-|       format.ts
-|       pricing.ts
-|       registration.ts
-|       
-\---validation
-        registration.ts
-        
-Folder PATH listing
-Volume serial number is 0000004B F6AF:34B5
-D:\CODE\SUKAMAJU-RUN-2025\PRISMA
-    schema.prisma
-    
-No subfolders exist 
+app
+  ├─ admin
+  │  ├─ (auth)
+  │  │  ├─ login
+  │  │  │  └─ page.tsx
+  │  │  └─ logout
+  │  ├─ dashboard
+  │  │  ├─ communications
+  │  │  │  └─ page.tsx
+  │  │  ├─ components
+  │  │  │  ├─ category-distribution.tsx
+  │  │  │  ├─ header.tsx
+  │  │  │  ├─ participant-detail-modal.tsx
+  │  │  │  ├─ recent-activities.tsx
+  │  │  │  ├─ registration-chart.tsx
+  │  │  │  ├─ sidebar.tsx
+  │  │  │  ├─ stats-card.tsx
+  │  │  │  ├─ stats.tsx
+  │  │  │  └─ types.ts
+  │  │  ├─ layout.tsx
+  │  │  ├─ page.tsx
+  │  │  └─ participants
+  │  │     ├─ page.tsx
+  │  │     └─ [id]
+  │  │        └─ route.ts
+  │  ├─ page.tsx
+  │  └─ templates
+  │     └─ route.ts
+  ├─ api
+  │  ├─ admin
+  │  │  ├─ auth
+  │  │  │  ├─ check
+  │  │  │  │  └─ route.ts
+  │  │  │  ├─ login
+  │  │  │  │  └─ route.ts
+  │  │  │  ├─ logout
+  │  │  │  │  └─ route.ts
+  │  │  │  └─ seed
+  │  │  │     └─ route.ts
+  │  │  ├─ export
+  │  │  │  └─ route.ts
+  │  │  ├─ participants
+  │  │  │  └─ route.ts
+  │  │  ├─ payment
+  │  │  │  └─ confirm
+  │  │  │     └─ route.ts
+  │  │  ├─ stats
+  │  │  │  └─ route.ts
+  │  │  └─ templates
+  │  │     ├─ route.ts
+  │  │     └─ [id]
+  │  │        ├─ route.ts
+  │  │        └─ test
+  │  │           └─ route.ts
+  │  ├─ check-email
+  │  │  └─ route.ts
+  │  ├─ payment
+  │  │  ├─ create
+  │  │  │  └─ route.ts
+  │  │  ├─ status
+  │  │  │  └─ route.ts
+  │  │  └─ webhook
+  │  │     └─ route.ts
+  │  ├─ provinces
+  │  │  └─ route.ts
+  │  ├─ registration
+  │  │  ├─ community
+  │  │  │  └─ route.ts
+  │  │  ├─ community-summary
+  │  │  │  └─ route.ts
+  │  │  └─ route.ts
+  │  ├─ sentry-example-api
+  │  │  └─ route.ts
+  │  └─ validate-whatsapp
+  │     └─ route.ts
+  ├─ faq
+  │  └─ page.tsx
+  ├─ favicon.ico
+  ├─ global-error.tsx
+  ├─ globals.css
+  ├─ layout.tsx
+  ├─ page.tsx
+  ├─ payment
+  │  └─ page.tsx
+  ├─ registration
+  │  ├─ community
+  │  │  ├─ components
+  │  │  │  ├─ member-form.tsx
+  │  │  │  ├─ price-display.tsx
+  │  │  │  ├─ step-1-info.tsx
+  │  │  │  ├─ step-2-members.tsx
+  │  │  │  ├─ step-3-review.tsx
+  │  │  │  └─ step-indicator.tsx
+  │  │  ├─ constants
+  │  │  │  └─ pricing.ts
+  │  │  ├─ page.tsx
+  │  │  ├─ types
+  │  │  │  └─ price.ts
+  │  │  └─ utils
+  │  │     └─ community-helper.ts
+  │  ├─ components
+  │  │  └─ step-5-payment.tsx
+  │  ├─ page.tsx
+  │  ├─ payment
+  │  │  └─ page.tsx
+  │  ├─ pending
+  │  │  └─ page.tsx
+  │  └─ success
+  │     └─ page.tsx
+  ├─ route
+  │  └─ page.tsx
+  ├─ schedule
+  │  └─ page.tsx
+  └─ sentry-example-page
+     └─ page.tsx
 
-Folder PATH listing
-Volume serial number is 0000001B F6AF:34B5
-D:\CODE\SUKAMAJU-RUN-2025\PUBLIC
-|   file.svg
-|   globe.svg
-|   vercel.svg
-|   window.svg
-|   
-\---images
-Folder PATH listing
-Volume serial number is 00000091 F6AF:34B5
-D:\CODE\SUKAMAJU-RUN-2025\SCRIPTS
-    cleanup.ts
-    seed.ts
-    test-payment.ts
-    
-No subfolders exist 
+components
+  ├─ layout
+  ├─ registration
+  │  └─ payment-modal.tsx
+  ├─ sections
+  └─ ui
+     ├─ timeline.tsx
+     └─ whatsapp-input.tsx
+
+lib
+  ├─ auth.ts
+  ├─ config
+  │  └─ pricing.ts
+  ├─ hooks
+  ├─ midtrans.ts
+  ├─ prisma.ts
+  ├─ services
+  │  ├─ qrcode.service.ts
+  │  ├─ registration.service.ts
+  │  ├─ whatsapp.service.dev.ts
+  │  ├─ whatsapp.service.test.ts
+  │  └─ whatsapp.service.ts
+  ├─ types
+  │  ├─ community-registration.ts
+  │  ├─ midtrans-client.d.ts
+  │  ├─ midtrans.ts
+  │  └─ registration.ts
+  ├─ utils
+  │  ├─ cn.ts
+  │  ├─ community-registration.ts
+  │  ├─ format.ts
+  │  ├─ pricing.ts
+  │  ├─ registration.ts
+  │  └─ whatsapp-formatter.ts
+  └─ validation
+     └─ registration.ts
+
+prisma
+  └─ schema.prisma
+
+public
+  ├─ file.svg
+  ├─ globe.svg
+  ├─ images
+  ├─ next.svg
+  ├─ vercel.svg
+  └─ window.svg
+
+scripts
+  ├─ cleanup.ts
+  ├─ migrate-whatsapp-format.ts
+  ├─ seed.ts
+  └─ test-payment.ts
 

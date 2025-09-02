@@ -1,3 +1,5 @@
+import { formatWhatsAppNumber, validateWhatsAppNumber } from '@/lib/utils/whatsapp-formatter';
+
 interface Participant {
   fullName: string;
   registrationCode: string;
@@ -9,10 +11,18 @@ interface Participant {
 
 export class WhatsAppService {
   private static token = process.env.WABLAS_TOKEN;
-  private static domain = process.env.WABLAS_DOMAIN;
+  private static domain = process.env.WABLAS_DOMAIN || 'https://api.wablas.com';
 
   static async sendMessage(phone: string, message: string) {
     try {
+      // Format phone number to Wablas format
+      const formattedPhone = formatWhatsAppNumber(phone);
+
+      // Validate before sending
+      if (!validateWhatsAppNumber(formattedPhone)) {
+        throw new Error(`Invalid WhatsApp number: ${phone}`);
+      }
+
       const response = await fetch(`${this.domain}/api/send-message`, {
         method: 'POST',
         headers: {
@@ -20,13 +30,13 @@ export class WhatsAppService {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          phone: phone.replace(/^0/, '62'), // Convert 08xxx to 628xxx
+          phone: formattedPhone, // Already in 628xxx format
           message
         })
       });
 
       const result = await response.json();
-      console.log('WhatsApp sent:', result);
+      console.log('WhatsApp sent to:', formattedPhone, result);
       return result;
     } catch (error) {
       console.error('WhatsApp error:', error);
@@ -34,7 +44,50 @@ export class WhatsAppService {
     }
   }
 
+  static async sendBulkMessages(recipients: Array<{ phone: string; message: string }>) {
+    const results: Array<{ phone: string; success: boolean; result?: unknown; error?: string }> = [];
+
+    for (const recipient of recipients) {
+      try {
+        const formattedPhone = formatWhatsAppNumber(recipient.phone);
+
+        if (!validateWhatsAppNumber(formattedPhone)) {
+          results.push({
+            phone: recipient.phone,
+            success: false,
+            error: 'Invalid phone number'
+          });
+          continue;
+        }
+
+        const result = await this.sendMessage(formattedPhone, recipient.message);
+        results.push({
+          phone: formattedPhone,
+          success: true,
+          result
+        });
+
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+      } catch (error) {
+        // Akses message dengan casting
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        results.push({
+          phone: recipient.phone,
+          success: false,
+          error: errorMessage
+        });
+      }
+    }
+
+    return results;
+  }
+
   static async sendRegistrationConfirmation(participant: Participant, paymentCode: string) {
+    // Ensure phone is formatted correctly
+    const formattedPhone = formatWhatsAppNumber(participant.whatsapp);
+
     const message = `🏃 *SUKAMAJU RUN 2025* 🏃
 
 Halo ${participant.fullName}! 
@@ -50,6 +103,6 @@ Total: *Rp ${participant.totalPrice.toLocaleString('id-ID')}*
 
 Terima kasih! 🙏`;
 
-    return this.sendMessage(participant.whatsapp, message);
+    return this.sendMessage(formattedPhone, message);
   }
 }

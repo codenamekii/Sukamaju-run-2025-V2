@@ -24,7 +24,6 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-
 import { DashboardStatsSection } from "./components/stats";
 import { Activity as ActivityType, DashboardStats } from "./components/types";
 
@@ -36,7 +35,7 @@ function RecentActivities({ activities }: { activities: ActivityType[] }) {
         return Users;
       case "payment":
         return CreditCard;
-      case "check-in":
+      case "checkin":
         return CheckCircle;
       default:
         return Activity;

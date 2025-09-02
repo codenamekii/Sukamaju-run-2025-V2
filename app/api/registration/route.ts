@@ -1,91 +1,77 @@
+import { WhatsAppService } from '@/lib/services/whatsapp.service';
 import { calculateRegistrationPrice } from '@/lib/utils/pricing';
+import { formatWhatsAppNumber, validateWhatsAppNumber } from '@/lib/utils/whatsapp-formatter';
 import { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 
 const prisma = new PrismaClient();
 
-// Helper function to generate BIB number
+interface RegistrationBody {
+  fullName: string;
+  gender: string;
+  dateOfBirth: string;
+  idNumber: string;
+  bloodType?: string;
+  email: string;
+  whatsapp: string;
+  address: string;
+  province: string;
+  city: string;
+  postalCode?: string;
+  category: '5K' | '10K';
+  bibName: string | null;
+  jerseySize: string;
+  estimatedTime?: string;
+  emergencyName: string;
+  emergencyPhone: string;
+  emergencyRelation: string;
+  medicalHistory?: string;
+  allergies?: string;
+  medications?: string;
+}
+
 async function generateBibNumber(category: '5K' | '10K'): Promise<string> {
   const count = await prisma.participant.count({ where: { category } });
   const prefix = category === '5K' ? '5' : '10';
-  const number = (count + 1).toString().padStart(3, '0');
-  return `${prefix}${number}`;
-}
-
-// Helper function to calculate price
-function calculatePrice(category: string, jerseySize: string, registrationType: string) {
-  // Fixed prices - no early bird
-  let basePrice = 0;
-
-  if (registrationType === 'COMMUNITY') {
-    // Community prices (5% discount)
-    if (category === '5K') {
-      basePrice = 171000; // Rp 171.000
-    } else if (category === '10K') {
-      basePrice = 218000; // Rp 218.000
-    }
-  } else {
-    // Individual prices
-    if (category === '5K') {
-      basePrice = 180000;
-    } else if (category === '10K') {
-      basePrice = 230000;
-    }
-  }
-
-  // Jersey add-on ONLY for XXL and XXXL
-  const jerseyAddOn = ['XXL', 'XXXL'].includes(jerseySize) ? 20000 : 0;
-
-  // Remove early bird logic since prices are fixed
-  const isEarlyBird = false;
-
-  return {
-    basePrice,
-    jerseyAddOn,
-    totalPrice: basePrice + jerseyAddOn,
-    isEarlyBird
-  };
+  return `${prefix}${(count + 1).toString().padStart(3, '0')}`;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body: RegistrationBody = await request.json();
 
-    // Check if email already exists
+    // Format WhatsApp
+    const formattedWhatsApp = formatWhatsAppNumber(body.whatsapp);
+    if (!validateWhatsAppNumber(formattedWhatsApp)) {
+      return NextResponse.json({ error: 'Format WhatsApp tidak valid' }, { status: 400 });
+    }
+
+    // Cek email unik
     const existingParticipant = await prisma.participant.findUnique({
       where: { email: body.email },
     });
-
     if (existingParticipant) {
       return NextResponse.json({ error: 'Email sudah terdaftar' }, { status: 400 });
     }
 
-    // Check age eligibility
+    // Cek usia
     const birthDate = new Date(body.dateOfBirth);
     const age = new Date().getFullYear() - birthDate.getFullYear();
-
     if ((body.category === '5K' && age < 12) || (body.category === '10K' && age < 17)) {
       return NextResponse.json(
-        {
-          error:
-            body.category === '5K'
-              ? 'Minimal usia 12 tahun untuk kategori 5K'
-              : 'Minimal usia 17 tahun untuk kategori 10K',
-        },
+        { error: body.category === '5K' ? 'Minimal usia 12 tahun untuk 5K' : 'Minimal usia 17 tahun untuk 10K' },
         { status: 400 }
       );
     }
 
-    // Calculate pricing
+    // Hitung harga
     const pricing = calculateRegistrationPrice(body.category, body.jerseySize);
 
-    // Generate BIB number
+    // Generate BIB & kode registrasi
     const bibNumber = await generateBibNumber(body.category);
-
-    // Generate registration code (random 6 digit)
     const registrationCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // Create participant with relations in a transaction
+    // Transaksi Prisma
     const result = await prisma.$transaction(async (tx) => {
       const participant = await tx.participant.create({
         data: {
@@ -95,13 +81,13 @@ export async function POST(request: NextRequest) {
           idNumber: body.idNumber,
           bloodType: body.bloodType || null,
           email: body.email,
-          whatsapp: body.whatsapp,
+          whatsapp: formattedWhatsApp,
           address: body.address,
           province: body.province,
           city: body.city,
           postalCode: body.postalCode || null,
           category: body.category,
-          bibName: body.bibName,
+          bibName: body.bibName || '',
           jerseySize: body.jerseySize,
           estimatedTime: body.estimatedTime || null,
           emergencyName: body.emergencyName,
@@ -142,6 +128,19 @@ export async function POST(request: NextRequest) {
       return { participant, racePack, payment };
     });
 
+    // Kirim WhatsApp konfirmasi
+    await WhatsAppService.sendRegistrationConfirmation(
+      {
+        fullName: result.participant.fullName,
+        registrationCode: result.participant.registrationCode,
+        category: result.participant.category,
+        bibNumber: result.participant.bibNumber ?? 'N/A',
+        totalPrice: result.participant.totalPrice,
+        whatsapp: result.participant.whatsapp,
+      },
+      result.payment.paymentCode
+    );
+
     return NextResponse.json({
       success: true,
       data: {
@@ -159,40 +158,50 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    return NextResponse.json(
-      { error: 'Terjadi kesalahan saat mendaftar', details: process.env.NODE_ENV === 'development' ? error : undefined },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : 'Terjadi kesalahan';
+    return NextResponse.json({ error: 'Terjadi kesalahan saat mendaftar', details: message }, { status: 500 });
+  } finally {
+    await prisma.$disconnect();
   }
 }
 
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const code = searchParams.get("code");
+
+  if (!code) {
+    return NextResponse.json({ error: "Registration code is required" }, { status: 400 });
+  }
+
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const registrationCode = searchParams.get('code');
-    const email = searchParams.get('email');
-
-    if (!registrationCode && !email) {
-      return NextResponse.json({ error: 'Kode registrasi atau email harus diisi' }, { status: 400 });
-    }
-
-    const participant = await prisma.participant.findFirst({
-      where: {
-        OR: [
-          { registrationCode: registrationCode || undefined },
-          { email: email || undefined },
-        ],
+    const participant = await prisma.participant.findUnique({
+      where: { registrationCode: code },
+      include: {
+        payments: true,   // pakai jamak
+        racePack: true,
+        certificate: true,
+        checkIns: true,
+        communityMember: true,
       },
-      include: { payments: { orderBy: { createdAt: 'desc' }, take: 1 }, racePack: true },
     });
 
     if (!participant) {
-      return NextResponse.json({ error: 'Peserta tidak ditemukan' }, { status: 404 });
+      return NextResponse.json({ error: "Registration not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, data: { participant, payment: participant.payments[0] || null } });
+    return NextResponse.json({
+      success: true,
+      data: {
+        participant,
+        payment: participant.payment,
+        racePack: participant.racePack,
+      },
+    });
   } catch (error) {
-    console.error('Error fetching participant:', error);
-    return NextResponse.json({ error: 'Terjadi kesalahan' }, { status: 500 });
+    console.error("GET registration error:", error);
+    const message = error instanceof Error ? error.message : "Terjadi kesalahan";
+    return NextResponse.json({ error: "Terjadi kesalahan", details: message }, { status: 500 });
+  } finally {
+    await prisma.$disconnect();
   }
 }

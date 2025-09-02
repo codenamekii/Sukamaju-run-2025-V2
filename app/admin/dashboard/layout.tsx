@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   BarChart3,
   ChevronDown,
   CreditCard,
@@ -11,6 +12,7 @@ import {
   LucideIcon,
   Mail,
   Menu,
+  Package,
   QrCode,
   Settings,
   Shield,
@@ -53,13 +55,23 @@ const menuItems: MenuItem[] = [
     icon: Ticket,
     children: [
       { name: 'Manage Registrations', href: '/admin/dashboard/registrations', icon: Ticket },
-      { name: 'Promo & Discounts', href: '/admin/dashboard/registrations/promo', icon: CreditCard },
+      { name: 'Promo & Discounts', href: '/admin/dashboard/promotions', icon: CreditCard },
     ]
   },
   {
+    name: 'Payments',
+    href: '/admin/dashboard/payments',
+    icon: CreditCard
+  },
+  {
     name: 'Check-In',
-    href: '/admin/dashboard/check-in',
+    href: '/admin/dashboard/checkin',
     icon: QrCode
+  },
+  {
+    name: 'Racepack',
+    href: '/admin/dashboard/racepacks',
+    icon: Package
   },
   {
     name: 'Communications',
@@ -74,6 +86,11 @@ const menuItems: MenuItem[] = [
     name: 'Reports',
     href: '/admin/dashboard/reports',
     icon: BarChart3
+  },
+  {
+    name: 'Analytics',
+    href: '/admin/dashboard/analytics',
+    icon: Activity
   },
   {
     name: 'Settings',

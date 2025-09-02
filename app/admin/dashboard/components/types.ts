@@ -46,3 +46,35 @@ export interface Participant {
   emergencyPhone?: string;
   emergencyRelation?: string;
 }
+
+export type Activity = {
+  id: string;
+  type: "registration" | "payment" | "checkin" | string;
+  description: string;
+  timestamp: string;
+  status: "success" | "pending" | "failed" | string;
+};
+
+export type DashboardStats = {
+  totalParticipants: number;
+  confirmedParticipants: number;
+  pendingPayments: number;
+  totalRevenue: number;
+  todayRegistrations: number;
+  weeklyGrowth: number;
+  categoryBreakdown: {
+    [key: string]: number;
+  };
+  recentActivities: Activity[];
+  registrationTrend: {
+    date: string;
+    registrations: number;
+    payments: number;
+  }[];
+  paymentStats: {
+    total: number;
+    paid: number;
+    pending: number;
+    failed: number;
+  };
+};

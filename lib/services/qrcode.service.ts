@@ -1,4 +1,3 @@
-// lib/services/qrcode.service.ts
 import QRCode from 'qrcode';
 
 export class QRCodeService {

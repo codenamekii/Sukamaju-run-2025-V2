@@ -54,7 +54,7 @@ export function PaymentModal({
     return () => {
       document.body.removeChild(script);
     };
-  }, [registrationCode]);
+  }, []);
 
   const initializePayment = async () => {
     try {
@@ -64,15 +64,15 @@ export function PaymentModal({
       setIsLoading(false);
 
       window.snap.pay(token, {
-        onSuccess: async function (result) {
+        onSuccess: async function (result: unknown) {
           console.log("Payment success:", result);
           onSuccess();
         },
-        onPending: function (result) {
+        onPending: function (result: unknown) {
           console.log("Payment pending:", result);
           onPending();
         },
-        onError: function (result) {
+        onError: function (result: unknown) {
           console.log("Payment error:", result);
           onError(result);
         },

@@ -18,7 +18,7 @@ export default function FAQPage() {
     },
     {
       question: "Apa yang termasuk dalam race pack?",
-      answer: "Race pack mencakup: Jersey eksklusif SUKAMAJU RUN 2025, BIB number, timing chip (untuk kategori 10K), medali finisher, sertifikat elektronik, dan merchandise sponsor.",
+      answer: "Race pack mencakup: Jersey eksklusif SUKAMAJU RUN 2025, BIB number, medali finisher, sertifikat elektronik, dan merchandise sponsor.",
     },
     {
       question: "Kapan dan dimana pengambilan race pack?",
@@ -118,7 +118,7 @@ export default function FAQPage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <a
-                href="https://wa.me/62895422741155"
+                href="https://wa.me/6285890031215"
                 className="btn bg-secondary text-tangaroa hover:bg-secondary-600 hover:text-white"
               >
                 WhatsApp Kami

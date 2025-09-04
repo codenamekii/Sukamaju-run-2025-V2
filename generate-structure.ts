@@ -1,4 +1,3 @@
-// generate-structure.ts
 import fs from 'fs';
 import path from 'path';
 
@@ -29,4 +28,4 @@ folders.forEach(folder => {
   }
 });
 
-console.log(`structure.txt generated successfully.`);
+console.log(`${outputFile} generated successfully.`);

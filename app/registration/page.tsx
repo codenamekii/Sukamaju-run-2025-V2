@@ -34,6 +34,8 @@ import {
   registrationSchema
 } from "@/lib/validation/registration";
 
+
+
 // Step indicator component
 function StepIndicator({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
   return (
@@ -64,11 +66,14 @@ function StepIndicator({ currentStep, totalSteps }: { currentStep: number; total
   );
 }
 
+
+
 export default function RegistrationPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSizeChart, setShowSizeChart] = useState(false);
   type PriceCalculation = {
     basePrice: number;
     jerseyAdjustment: number;
@@ -245,7 +250,7 @@ export default function RegistrationPage() {
       price:  "Rp 230.000",
       originalPrice: null,
       description: "Untuk pelari berpengalaman",
-      features: ["Jersey premium", "Medali eksklusif", "Timing chip", "Prize pool"],
+      features: ["Jersey premium", "Medali eksklusif", "Prize pool"],
       icon: <Trophy className="w-8 h-8" />,
       color: "from-secondary to-accent",
       popular: false,
@@ -255,7 +260,7 @@ export default function RegistrationPage() {
       id: "COMMUNITY" as Category,
       title: "Komunitas",
       price: "Special Price",
-      description: "Minimal 10 orang",
+      description: "Minimal 5 Orang",
       features: ["Diskon 15%", "Tent khusus", "Photo booth", "Group certificate"],
       icon: <Users className="w-8 h-8" />,
       color: "from-waikawa-gray to-ship-cove",
@@ -584,17 +589,32 @@ export default function RegistrationPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Estimasi Waktu Finish (Opsional)
-                      </label>
-                      <input
-                        type="text"
-                        {...register("estimatedTime")}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="HH:MM (contoh: 01:30)"
-                      />
-                      {errors.estimatedTime && (
-                        <p className="text-red-500 text-xs mt-1">{errors.estimatedTime.message}</p>
+                      <button
+                        type="button"
+                        onClick={() => setShowSizeChart(true)}
+                        className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                      >
+                        Size Chart
+                      </button>
+
+                      {showSizeChart && (
+                        <div
+                          className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
+                          onClick={() => setShowSizeChart(false)}
+                        >
+                          <div
+                            className="bg-white p-4 rounded-lg max-w-sm w-full relative"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              onClick={() => setShowSizeChart(false)}
+                              className="absolute top-2 right-2 text-gray-600 hover:text-gray-800"
+                            >
+                              ✕
+                            </button>
+                            <img src="/images/sizechart.png" alt="Size Chart" className="w-full h-auto" />
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>

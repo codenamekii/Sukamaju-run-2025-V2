@@ -71,6 +71,9 @@ export async function POST(request: NextRequest) {
     const bibNumber = await generateBibNumber(body.category);
     const registrationCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
+    // buat paymentCode yang unik (simple)
+    const paymentCode = `PMT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+
     // Transaksi Prisma
     const result = await prisma.$transaction(async (tx) => {
       const participant = await tx.participant.create({
@@ -121,6 +124,7 @@ export async function POST(request: NextRequest) {
           participantId: participant.id,
           amount: pricing.totalPrice,
           status: 'PENDING',
+          paymentCode, // pastikan field ini ada di schema Prisma
           expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         },
       });
@@ -128,18 +132,106 @@ export async function POST(request: NextRequest) {
       return { participant, racePack, payment };
     });
 
+    // Create Midtrans payment token
+    let paymentToken: string | null = null;
+    let paymentUrl = '';
+
+    try {
+      const midtransPayload = {
+        transaction_details: {
+          order_id: result.payment.paymentCode,
+          gross_amount: result.payment.amount,
+        },
+        customer_details: {
+          first_name: result.participant.fullName,
+          email: result.participant.email,
+          phone: result.participant.whatsapp,
+        },
+        item_details: [
+          {
+            id: result.participant.category,
+            price: result.payment.amount,
+            quantity: 1,
+            name: `Registration ${result.participant.category} - ${result.participant.fullName}`,
+          },
+        ],
+        expiry: {
+          unit: 'hours',
+          duration: 24,
+        },
+      };
+
+      const midtransResponse = await fetch(
+        `https://app.${process.env.MIDTRANS_IS_PRODUCTION === 'true' ? '' : 'sandbox.'}midtrans.com/snap/v1/transactions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Basic ${Buffer.from((process.env.MIDTRANS_SERVER_KEY ?? '') + ':').toString('base64')}`,
+          },
+          body: JSON.stringify(midtransPayload),
+        }
+      );
+
+      if (midtransResponse.ok) {
+        const midtransData = await midtransResponse.json();
+        paymentToken = midtransData.token;
+        paymentUrl = midtransData.redirect_url;
+
+        // Update payment dengan Midtrans order ID & token
+        await prisma.payment.update({
+          where: { id: result.payment.id },
+          data: {
+            midtransOrderId: result.payment.paymentCode,
+            midtransToken: paymentToken,
+          },
+        });
+      } else {
+        const txt = await midtransResponse.text().catch(() => '');
+        console.error('Midtrans responded not ok:', midtransResponse.status, txt);
+      }
+    } catch (midtransError) {
+      console.error('Midtrans error:', midtransError);
+    }
+
     // Kirim WhatsApp konfirmasi
-    await WhatsAppService.sendRegistrationConfirmation(
-      {
-        fullName: result.participant.fullName,
-        registrationCode: result.participant.registrationCode,
-        category: result.participant.category,
-        bibNumber: result.participant.bibNumber ?? 'N/A',
-        totalPrice: result.participant.totalPrice,
-        whatsapp: result.participant.whatsapp,
-      },
-      result.payment.paymentCode
-    );
+    try {
+      await WhatsAppService.sendRegistrationConfirmation(
+        {
+          fullName: result.participant.fullName,
+          registrationCode: result.participant.registrationCode,
+          category: result.participant.category,
+          bibNumber: result.participant.bibNumber ?? 'N/A',
+          totalPrice: result.participant.totalPrice,
+          whatsapp: result.participant.whatsapp,
+        },
+        {
+          paymentCode: result.payment.paymentCode,
+          amount: result.payment.amount,
+          paymentUrl: paymentUrl || `${process.env.NEXT_PUBLIC_APP_URL}/payment/${result.payment.paymentCode}`,
+          // NOTE: Ini baris penting: ubah null -> undefined untuk cocok dengan tipe PaymentData
+          expiredAt: result.payment.expiredAt ?? undefined,
+        }
+      );
+    } catch (waError) {
+      console.error('WhatsApp notification error:', waError);
+    }
+
+    // Reminder 30 menit sebelum expired
+    if (result.payment.expiredAt) {
+      const reminderTime = new Date(result.payment.expiredAt).getTime() - 30 * 60 * 1000;
+      const now = Date.now();
+
+      if (reminderTime > now) {
+        setTimeout(async () => {
+          try {
+            await WhatsAppService.sendPaymentReminder(result.participant.id);
+          } catch (err) {
+            console.error('Reminder WA error:', err);
+          }
+        }, reminderTime - now);
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -148,6 +240,8 @@ export async function POST(request: NextRequest) {
         bibNumber: result.participant.bibNumber,
         totalPrice: pricing.totalPrice,
         paymentCode: result.payment.paymentCode,
+        paymentToken,
+        paymentUrl,
         participant: {
           id: result.participant.id,
           fullName: result.participant.fullName,
@@ -167,17 +261,17 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const code = searchParams.get("code");
+  const code = searchParams.get('code');
 
   if (!code) {
-    return NextResponse.json({ error: "Registration code is required" }, { status: 400 });
+    return NextResponse.json({ error: 'Registration code is required' }, { status: 400 });
   }
 
   try {
     const participant = await prisma.participant.findUnique({
       where: { registrationCode: code },
       include: {
-        payments: true,   // pakai jamak
+        payments: true,
         racePack: true,
         certificate: true,
         checkIns: true,
@@ -186,21 +280,21 @@ export async function GET(request: NextRequest) {
     });
 
     if (!participant) {
-      return NextResponse.json({ error: "Registration not found" }, { status: 404 });
+      return NextResponse.json({ error: 'Registration not found' }, { status: 404 });
     }
 
     return NextResponse.json({
       success: true,
       data: {
         participant,
-        payment: participant.payment,
+        payment: participant.payments,
         racePack: participant.racePack,
       },
     });
   } catch (error) {
-    console.error("GET registration error:", error);
-    const message = error instanceof Error ? error.message : "Terjadi kesalahan";
-    return NextResponse.json({ error: "Terjadi kesalahan", details: message }, { status: 500 });
+    console.error('GET registration error:', error);
+    const message = error instanceof Error ? error.message : 'Terjadi kesalahan';
+    return NextResponse.json({ error: 'Terjadi kesalahan', details: message }, { status: 500 });
   } finally {
     await prisma.$disconnect();
   }

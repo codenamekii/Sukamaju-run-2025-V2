@@ -5,6 +5,10 @@ app
   │  │  │  └─ page.tsx
   │  │  └─ logout
   │  ├─ dashboard
+  │  │  ├─ analytics
+  │  │  │  └─ page.tsx
+  │  │  ├─ checkin
+  │  │  │  └─ page.tsx
   │  │  ├─ communications
   │  │  │  └─ page.tsx
   │  │  ├─ components
@@ -19,10 +23,19 @@ app
   │  │  │  └─ types.ts
   │  │  ├─ layout.tsx
   │  │  ├─ page.tsx
-  │  │  └─ participants
-  │  │     ├─ page.tsx
-  │  │     └─ [id]
-  │  │        └─ route.ts
+  │  │  ├─ participants
+  │  │  │  ├─ page.tsx
+  │  │  │  └─ [id]
+  │  │  │     └─ route.ts
+  │  │  ├─ payments
+  │  │  │  └─ page.tsx
+  │  │  ├─ promotions
+  │  │  │  └─ page.tsx
+  │  │  ├─ racepacks
+  │  │  │  └─ page.tsx
+  │  │  ├─ reports
+  │  │  │  └─ page.tsx
+  │  │  └─ settings
   │  ├─ page.tsx
   │  └─ templates
   │     └─ route.ts
@@ -37,13 +50,25 @@ app
   │  │  │  │  └─ route.ts
   │  │  │  └─ seed
   │  │  │     └─ route.ts
+  │  │  ├─ checkin
+  │  │  │  └─ route.ts
   │  │  ├─ export
   │  │  │  └─ route.ts
+  │  │  ├─ notifications
+  │  │  │  └─ send
   │  │  ├─ participants
-  │  │  │  └─ route.ts
+  │  │  │  ├─ route.ts
+  │  │  │  └─ [id]
   │  │  ├─ payment
-  │  │  │  └─ confirm
-  │  │  │     └─ route.ts
+  │  │  │  ├─ confirm
+  │  │  │  │  └─ route.ts
+  │  │  │  └─ route.ts
+  │  │  ├─ promotions
+  │  │  │  └─ route.ts
+  │  │  ├─ racepacks
+  │  │  │  └─ route.ts
+  │  │  ├─ reports
+  │  │  │  └─ route.ts
   │  │  ├─ stats
   │  │  │  └─ route.ts
   │  │  └─ templates
@@ -133,8 +158,9 @@ lib
   ├─ services
   │  ├─ qrcode.service.ts
   │  ├─ registration.service.ts
+  │  ├─ report.services.ts
+  │  ├─ whatsapp-notification.services.ts
   │  ├─ whatsapp.service.dev.ts
-  │  ├─ whatsapp.service.test.ts
   │  └─ whatsapp.service.ts
   ├─ types
   │  ├─ community-registration.ts
@@ -152,6 +178,10 @@ lib
      └─ registration.ts
 
 prisma
+  ├─ migrations
+  │  ├─ 20250903090318_init
+  │  │  └─ migration.sql
+  │  └─ migration_lock.toml
   └─ schema.prisma
 
 public

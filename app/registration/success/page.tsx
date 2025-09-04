@@ -32,12 +32,10 @@ interface RegistrationData {
   }>;
 }
 
-interface CommunityMember {
-  participant: {
-    fullName: string;
-    bibNumber: string | number;
-  };
-}
+type ApiCommunityMember = {
+  fullName: string;
+  bibNumber: string | number;
+};
 
 export default function ModernSuccessPage() {
   const searchParams = useSearchParams();
@@ -102,10 +100,10 @@ export default function ModernSuccessPage() {
             communityName: type === "COMMUNITY" ? data.data.community.communityName : undefined,
             picName: type === "COMMUNITY" ? data.data.community.picName : undefined,
             members:
-              type === "COMMUNITY"
-                ? data.data.community.members.map((m: CommunityMember) => ({
-                  name: m.participant.fullName,
-                  bibNumber: m.participant.bibNumber.toString(),
+              type === "COMMUNITY" && Array.isArray(data.data.members)
+                ? data.data.members.map((m: ApiCommunityMember) => ({
+                  name: m.fullName,
+                  bibNumber: String(m.bibNumber),
                 }))
                 : undefined,
           });

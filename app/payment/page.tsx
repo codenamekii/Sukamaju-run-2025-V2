@@ -162,7 +162,7 @@ export default function PaymentPage() {
           : registrationData.participant.totalPrice,
         registrationCode,
         paymentMethod: selectedMethod,
-        paymentChannel: selectedBank || selectedMethod
+        paymentChannel: selectedBank || selectedMethod,
       };
 
       const response = await fetch('/api/payment/create', {

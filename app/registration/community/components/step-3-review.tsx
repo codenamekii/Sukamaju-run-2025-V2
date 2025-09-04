@@ -4,35 +4,13 @@
 
 import {
   CommunityMember,
-  CommunityRegistrationData
+  CommunityRegistrationData,
+  calculateCommunityPrice
 } from "@/lib/types/community-registration";
-import { AlertCircle, ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import {
-  calculateCommunityPrice,
-  submitCommunityRegistration
-} from "../utils/community-helper"; // Fix: correct import path
-
-// Define the price calculation type locally if not in types file
-interface CommunityPriceCalculation {
-  basePrice: number;
-  baseMembers: number;
-  freeMembers: number;
-  totalMembers: number;
-  subtotal: number;
-  jerseyAdjustments: Array<{
-    memberName: string;
-    size: string;
-    adjustment: number;
-  }>;
-  totalJerseyAdjustment: number;
-  jerseyAddOnTotal: number;
-  totalBase: number;
-  totalPrice: number;
-  pricePerPerson: number;
-  savings: number;
-}
+import { useRef, useState } from "react";
+import { submitCommunityRegistration } from "../utils/community-helper";
 
 interface Step3ReviewProps {
   data: CommunityRegistrationData;
@@ -40,6 +18,7 @@ interface Step3ReviewProps {
   onBack: () => void;
   isSubmitting: boolean;
   setIsSubmitting: (value: boolean) => void;
+  onSuccess?: () => void; // Callback after successful submission
 }
 
 export default function Step3Review({
@@ -48,36 +27,25 @@ export default function Step3Review({
   onBack,
   isSubmitting,
   setIsSubmitting,
+  onSuccess
 }: Step3ReviewProps) {
   const router = useRouter();
   const [errors, setErrors] = useState<string[]>([]);
-  const [priceCalculation, setPriceCalculation] =
-    useState<CommunityPriceCalculation | null>(null);
+  const [submitAttempts, setSubmitAttempts] = useState(0);
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+  const lastSubmitTime = useRef<number>(0);
 
-  useEffect(() => {
-    if (!data?.members || data.members.length === 0) {
-      console.log("No members data available");
-      return;
-    }
+  const priceCalculation = calculateCommunityPrice(
+    data.category as "5K" | "10K",
+    data.members
+  );
 
-    if (data.category !== "5K" && data.category !== "10K") {
-      console.log("Invalid category:", data.category);
-      return;
-    }
-
-    try {
-      const members = data.members as CommunityMember[];
-      const calculation = calculateCommunityPrice(
-        data.category as "5K" | "10K",
-        members
-      );
-
-      console.log("Price calculation result:", calculation);
-      setPriceCalculation(calculation);
-    } catch (error) {
-      console.error("Error calculating price:", error);
-    }
-  }, [data.members, data.category]);
+  // Prevent double-click and rapid submissions
+  const canSubmit = () => {
+    const now = Date.now();
+    const timeSinceLastSubmit = now - lastSubmitTime.current;
+    return timeSinceLastSubmit > 2000; // Minimum 2 seconds between attempts
+  };
 
   const validateTerms = () => {
     const errs: string[] = [];
@@ -95,41 +63,86 @@ export default function Step3Review({
   };
 
   const handleSubmit = async () => {
+    // Check if can submit (prevent rapid clicks)
+    if (!canSubmit()) {
+      console.log("Too fast, please wait");
+      return;
+    }
+
+    // Validate terms first
     const validationErrors = validateTerms();
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
       return;
     }
 
+    // Update last submit time
+    lastSubmitTime.current = Date.now();
+
+    // Disable button immediately
+    if (submitButtonRef.current) {
+      submitButtonRef.current.disabled = true;
+    }
+
     setIsSubmitting(true);
     setErrors([]);
+    setSubmitAttempts(prev => prev + 1);
 
     try {
+      console.log("Starting community registration...");
+
       const {
         registrationResults,
         communityRegistrationCode,
+        paymentCode,
+        totalPrice
       } = await submitCommunityRegistration(data);
 
       if (!communityRegistrationCode) {
-        throw new Error("Community registration gagal. Tidak ada kode registrasi komunitas.");
+        throw new Error("Tidak ada kode registrasi komunitas");
       }
 
-      // FIX: Use community registration code, NOT individual member code
-      const communityCode = communityRegistrationCode; // This will be COM-BFS4RX
-      const type = "COMMUNITY";
+      console.log("Registration successful:", {
+        code: communityRegistrationCode,
+        members: registrationResults.length,
+        payment: paymentCode
+      });
 
-      alert(
-        `✅ ${registrationResults.length} peserta terdaftar. Lanjut ke pembayaran...`
-      );
+      // Clear local storage draft after success
+      if (onSuccess) {
+        onSuccess();
+      }
 
-      router.push(`/registration/payment?code=${communityCode}&type=${type}`);
+      // Show success message
+      const successMessage = `✅ Registrasi Berhasil!\n\n` +
+        `${registrationResults.length} peserta terdaftar.\n` +
+        `Kode: ${communityRegistrationCode}\n` +
+        `Total: Rp ${totalPrice.toLocaleString('id-ID')}\n\n` +
+        `Lanjut ke pembayaran...`;
+
+      alert(successMessage);
+
+      // Navigate to payment page
+      router.push(`/registration/payment?code=${communityRegistrationCode}&type=COMMUNITY`);
+
     } catch (error) {
       console.error("Registration error:", error);
-      const msg =
-        error instanceof Error ? error.message : "Registration failed";
-      alert(
-        `❌ REGISTRASI KOMUNITAS GAGAL\n\nError: ${msg}\n\nSilakan coba lagi atau hubungi panitia.`
-      );
+
+      const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan";
+
+      // Check if it's a duplicate submission error
+      if (errorMessage.includes("already registered") || errorMessage.includes("sudah terdaftar")) {
+        setErrors([errorMessage]);
+      } else if (errorMessage.includes("Too many")) {
+        setErrors(["Terlalu banyak percobaan. Silakan tunggu beberapa saat."]);
+      } else {
+        setErrors([`Registrasi gagal: ${errorMessage}`]);
+      }
+
+      // Re-enable button after error
+      if (submitButtonRef.current) {
+        submitButtonRef.current.disabled = false;
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -151,7 +164,7 @@ export default function Step3Review({
     <div className="max-w-4xl mx-auto">
       <div className="bg-white rounded-xl shadow-lg p-6 md:p-8">
         <h2 className="text-2xl font-bold text-primary mb-6">
-          Review & Syarat Ketentuan
+          Review & Konfirmasi
         </h2>
 
         {/* Community Summary */}
@@ -178,80 +191,91 @@ export default function Step3Review({
                 {data.members.length} orang
               </span>
             </div>
-            <div>
-              <span className="text-gray-600">WhatsApp PIC:</span>
-              <span className="ml-2 font-medium">{data.picWhatsapp}</span>
-            </div>
-            <div>
-              <span className="text-gray-600">Email PIC:</span>
-              <span className="ml-2 font-medium">{data.picEmail}</span>
+            <div className="md:col-span-2">
+              <span className="text-gray-600">Alamat:</span>
+              <span className="ml-2 font-medium">
+                {data.address}, {data.city}, {data.province}
+              </span>
             </div>
           </div>
         </div>
 
         {/* Members List */}
         <div className="bg-gray-50 rounded-lg p-4 mb-6">
-          <h3 className="font-semibold text-gray-800 mb-3">Daftar Anggota</h3>
-          <div className="space-y-2">
+          <h3 className="font-semibold text-gray-800 mb-3">
+            Daftar Anggota ({data.members.length})
+          </h3>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
             {data.members.map((member: CommunityMember, index: number) => (
-              <div key={index} className="flex justify-between text-sm">
+              <div key={index} className="flex justify-between text-sm py-1 border-b border-gray-200">
                 <span>
                   {index + 1}. {member.fullName || `Member ${index + 1}`}
                 </span>
-                <span className="text-gray-600">
-                  {member.jerseySize}
-                  {["XXL", "XXXL"].includes(member.jerseySize) && " (+20k)"}
-                </span>
+                <div className="flex gap-4">
+                  <span className="text-gray-600">
+                    {member.jerseySize}
+                    {["XXL", "XXXL"].includes(member.jerseySize) && (
+                      <span className="text-orange-600 ml-1">(+20k)</span>
+                    )}
+                  </span>
+                  <span className="text-gray-500 text-xs">
+                    {member.email}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Price Summary - Fixed to show properly */}
+        {/* Price Summary */}
         {priceCalculation && (
           <div className="bg-blue-50 rounded-lg p-4 mb-6">
             <h3 className="font-semibold text-gray-800 mb-3">Rincian Biaya</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">
-                  Kategori {data.category}:
+                  Harga per orang ({data.category}):
                 </span>
                 <span className="font-medium">
-                  {formatCurrency(priceCalculation.basePrice)}/orang
+                  {formatCurrency(priceCalculation.basePrice)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">
-                  {priceCalculation.totalMembers} peserta × {formatCurrency(priceCalculation.basePrice)}:
+                  Subtotal ({priceCalculation.totalMembers} × {formatCurrency(priceCalculation.basePrice)}):
                 </span>
                 <span className="font-medium">
                   {formatCurrency(priceCalculation.totalBase)}
                 </span>
               </div>
 
-              {/* Jersey Addon Details */}
+              {/* Jersey Addons */}
               {priceCalculation.jerseyAddOnTotal > 0 && (
-                <>
-                  <div className="border-t pt-2 mt-2">
-                    <div className="font-medium text-gray-700 mb-1">Jersey Addon (XXL/XXXL):</div>
-                    {priceCalculation.jerseyAdjustments
-                      .filter(j => j.adjustment > 0)
-                      .map((jersey, idx) => (
-                        <div key={idx} className="flex justify-between ml-4">
-                          <span className="text-gray-600">
-                            {jersey.memberName} ({jersey.size}):
-                          </span>
-                          <span>+{formatCurrency(jersey.adjustment)}</span>
-                        </div>
-                      ))}
+                <div className="border-t pt-2 mt-2">
+                  <div className="font-medium text-gray-700 mb-1">
+                    Biaya Tambahan Jersey (XXL/XXXL):
                   </div>
-                </>
+                  {priceCalculation.jerseyAdjustments
+                    .filter(j => j.adjustment > 0)
+                    .map((jersey, idx) => (
+                      <div key={idx} className="flex justify-between ml-4 text-gray-600">
+                        <span>{jersey.memberName} ({jersey.size}):</span>
+                        <span>+{formatCurrency(jersey.adjustment)}</span>
+                      </div>
+                    ))}
+                  <div className="flex justify-between mt-1">
+                    <span className="text-gray-600">Total Jersey Addon:</span>
+                    <span className="font-medium">
+                      +{formatCurrency(priceCalculation.jerseyAddOnTotal)}
+                    </span>
+                  </div>
+                </div>
               )}
 
               {/* Total */}
               <div className="border-t pt-2 mt-2">
                 <div className="flex justify-between font-bold text-base">
-                  <span>Total:</span>
+                  <span>Total Pembayaran:</span>
                   <span className="text-primary text-lg">
                     {formatCurrency(priceCalculation.totalPrice)}
                   </span>
@@ -271,32 +295,12 @@ export default function Step3Review({
           </div>
         )}
 
-        {/* If price calculation failed, show fallback */}
-        {!priceCalculation && data.members.length > 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-            <div className="flex items-start">
-              <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 mr-2" />
-              <div className="text-sm text-yellow-800">
-                <p className="font-semibold">Kalkulasi Harga Manual:</p>
-                <p>Kategori {data.category}: {data.category === '5K' ? 'Rp 171.000' : 'Rp 218.000'}/orang</p>
-                <p>Total {data.members.length} orang</p>
-                <p className="font-bold mt-1">
-                  Total: {formatCurrency(
-                    data.members.length * (data.category === '5K' ? 171000 : 218000) +
-                    data.members.filter((m: CommunityMember) => ['XXL', 'XXXL'].includes(m.jerseySize)).length * 20000
-                  )}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Terms & Conditions */}
-        <div className="space-y-4">
+        <div className="space-y-4 mb-6">
           <h3 className="font-semibold text-gray-800">Syarat & Ketentuan</h3>
 
           <div className="space-y-3">
-            <label className="flex items-start cursor-pointer">
+            <label className="flex items-start cursor-pointer hover:bg-gray-50 p-2 rounded">
               <input
                 type="checkbox"
                 checked={data.agreeToData || false}
@@ -309,7 +313,7 @@ export default function Step3Review({
               </span>
             </label>
 
-            <label className="flex items-start cursor-pointer">
+            <label className="flex items-start cursor-pointer hover:bg-gray-50 p-2 rounded">
               <input
                 type="checkbox"
                 checked={data.agreeToHealth || false}
@@ -323,7 +327,7 @@ export default function Step3Review({
               </span>
             </label>
 
-            <label className="flex items-start cursor-pointer">
+            <label className="flex items-start cursor-pointer hover:bg-gray-50 p-2 rounded">
               <input
                 type="checkbox"
                 checked={data.agreeToRefund || false}
@@ -336,7 +340,7 @@ export default function Step3Review({
               </span>
             </label>
 
-            <label className="flex items-start cursor-pointer">
+            <label className="flex items-start cursor-pointer hover:bg-gray-50 p-2 rounded">
               <input
                 type="checkbox"
                 checked={data.agreeToTerms || false}
@@ -345,18 +349,27 @@ export default function Step3Review({
               />
               <span className="text-sm text-gray-600">
                 Saya telah membaca dan menyetujui semua syarat dan ketentuan
-                yang berlaku untuk SUKAMAJU RUN 2025 atas nama seluruh anggota
-                komunitas
+                yang berlaku untuk SUKAMAJU RUN 2025
               </span>
             </label>
           </div>
         </div>
 
+        {/* All checkboxes status */}
+        {data.agreeToData && data.agreeToHealth && data.agreeToRefund && data.agreeToTerms && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 flex items-center">
+            <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+            <span className="text-sm text-green-800">
+              Semua persyaratan telah disetujui
+            </span>
+          </div>
+        )}
+
         {/* Validation Errors */}
         {errors.length > 0 && (
           <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-start">
-              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 mr-2" />
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 mr-2 flex-shrink-0" />
               <div className="text-sm text-red-800">
                 <ul className="list-disc list-inside">
                   {errors.map((error, index) => (
@@ -365,6 +378,13 @@ export default function Step3Review({
                 </ul>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Submit attempts indicator */}
+        {submitAttempts > 1 && (
+          <div className="text-xs text-gray-500 text-center mb-2">
+            Percobaan submit: {submitAttempts}
           </div>
         )}
 
@@ -380,15 +400,21 @@ export default function Step3Review({
             Kembali
           </button>
           <button
+            ref={submitButtonRef}
             type="button"
             onClick={handleSubmit}
-            className="btn-primary flex items-center gap-2"
+            className={`btn-primary flex items-center gap-2 relative ${isSubmitting ? 'opacity-75 cursor-not-allowed' : ''
+              }`}
             disabled={isSubmitting}
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Processing...
+                <span>Memproses...</span>
+                <span className="absolute -top-2 -right-2 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </span>
               </>
             ) : (
               <>
@@ -398,6 +424,15 @@ export default function Step3Review({
             )}
           </button>
         </div>
+
+        {/* Additional warning during submission */}
+        {isSubmitting && (
+          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-sm text-yellow-800 text-center">
+              ⚠️ Mohon tunggu, jangan tutup halaman atau klik tombol lain...
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

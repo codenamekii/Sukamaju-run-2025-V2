@@ -1,145 +1,312 @@
 // app/api/registration/community/route.ts
-
-import prisma from '@/lib/prisma'; // Import singleton
+import { WhatsAppService } from '@/lib/services/whatsapp.service';
+import { formatWhatsAppNumber, validateWhatsAppNumber } from '@/lib/utils/whatsapp-formatter';
+import { Prisma, PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Helper untuk generate BIB numbers
-async function generateBibNumbers(category: '5K' | '10K', count: number): Promise<string[]> {
-  const existingCount = await prisma.participant.count({ where: { category } });
-  const prefix = category === '5K' ? '5' : '10';
-  const bibNumbers: string[] = [];
+const prisma = new PrismaClient();
 
-  for (let i = 0; i < count; i++) {
-    const number = (existingCount + i + 1).toString().padStart(3, '0');
-    bibNumbers.push(`${prefix}${number}`);
+// Constants for pricing (fixed as per requirements)
+const PRICING = {
+  '5K': {
+    basePrice: 171000,
+    jerseyAddOn: 20000
+  },
+  '10K': {
+    basePrice: 218000,
+    jerseyAddOn: 20000
   }
+};
 
-  return bibNumbers;
+// Interface definitions
+interface CommunityMemberData {
+  fullName: string;
+  gender: string;
+  dateOfBirth: string;
+  identityNumber: string;
+  bloodType?: string;
+  email: string;
+  whatsapp: string;
+  address?: string;
+  province?: string;
+  city?: string;
+  postalCode?: string;
+  bibName?: string;
+  jerseySize: string;
+  estimatedTime?: string;
+  emergencyName: string;
+  emergencyPhone: string;
+  emergencyRelation: string;
+  medicalHistory?: string;
+  allergies?: string;
+  medications?: string;
 }
 
-// Helper untuk calculate community price
-function calculateCommunityPrice(category: string, jerseySize: string) {
-  // Community prices (5% discount from individual)
-  const basePrice = category === '5K' ? 171000 : 218000;
-  const jerseyAddOn = ['XXL', 'XXXL'].includes(jerseySize) ? 20000 : 0;
+interface CommunityRegistrationBody {
+  communityName: string;
+  communityType?: string;
+  address: string;
+  picName: string;
+  picWhatsapp: string;
+  picEmail: string;
+  picPosition?: string;
+  category: '5K' | '10K';
+  city: string;
+  province: string;
+  members: CommunityMemberData[];
+  idempotencyKey?: string; // Optional from client
+}
+
+// Helper: Generate request hash for idempotency
+function generateRequestHash(body: CommunityRegistrationBody): string {
+  const data = {
+    communityName: body.communityName,
+    picEmail: body.picEmail,
+    category: body.category,
+    memberEmails: body.members.map(m => m.email).sort()
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
+}
+
+// Helper: Calculate community pricing with jersey add-ons
+function calculateCommunityPrice(
+  category: '5K' | '10K',
+  members: CommunityMemberData[]
+) {
+  const basePrice = PRICING[category].basePrice;
+  const totalBasePrice = basePrice * members.length;
+
+  // Calculate jersey add-ons for XXL/XXXL
+  let jerseyAddOnTotal = 0;
+  const jerseyAdjustments: Array<{
+    memberName: string;
+    size: string;
+    adjustment: number;
+  }> = [];
+
+  members.forEach(member => {
+    if (member.jerseySize === 'XXL' || member.jerseySize === 'XXXL') {
+      const adjustment = PRICING[category].jerseyAddOn;
+      jerseyAddOnTotal += adjustment;
+      jerseyAdjustments.push({
+        memberName: member.fullName,
+        size: member.jerseySize,
+        adjustment
+      });
+    }
+  });
 
   return {
     basePrice,
-    jerseyAddOn,
-    totalPrice: basePrice + jerseyAddOn
+    totalBasePrice,
+    jerseyAddOnTotal,
+    jerseyAdjustments,
+    finalPrice: totalBasePrice + jerseyAddOnTotal,
+    pricePerPerson: Math.ceil((totalBasePrice + jerseyAddOnTotal) / members.length)
   };
 }
 
+// Main POST handler with idempotency and race condition prevention
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
+  let idempotencyKey: string | null = null;
 
-    console.log('📥 Community Registration Request:', {
+  try {
+    const body: CommunityRegistrationBody = await request.json();
+
+    // Generate or use provided idempotency key
+    idempotencyKey = body.idempotencyKey ||
+      `com-${body.picEmail}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const requestHash = generateRequestHash(body);
+
+    console.log('Community Registration Request:', {
       communityName: body.communityName,
-      memberCount: body.members?.length || 0,
-      category: body.category
+      picEmail: body.picEmail,
+      membersCount: body.members?.length,
+      idempotencyKey
     });
 
-    // Validate minimum members
+    // Validations
     if (!body.members || body.members.length < 5) {
       return NextResponse.json(
-        { error: 'Minimal 5 peserta untuk registrasi komunitas' },
+        { error: 'Minimum 5 anggota untuk registrasi komunitas' },
         { status: 400 }
       );
     }
 
-    // Check for duplicate emails
-    const emails = body.members.map((m: { email: string }) => m.email);
+    if (!body.address || body.address.trim() === '') {
+      return NextResponse.json(
+        { error: 'Alamat komunitas harus diisi' },
+        { status: 400 }
+      );
+    }
+
+    // Check idempotency first
+    const idempotencyCheck = await prisma.$queryRaw<Array<{
+      is_duplicate: boolean;
+      existing_response: unknown;
+      existing_status: string;
+    }>>`
+      SELECT * FROM check_idempotency(
+        ${idempotencyKey}::VARCHAR,
+        ${requestHash}::VARCHAR,
+        24
+      )
+    `;
+
+    if (idempotencyCheck[0]?.is_duplicate) {
+      console.log('Duplicate request detected, returning cached response');
+      if (idempotencyCheck[0].existing_status === 'completed') {
+        return NextResponse.json(idempotencyCheck[0].existing_response);
+      } else {
+        return NextResponse.json(
+          { error: 'Request is still processing, please wait' },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Check rate limiting
+    const rateLimitOk = await prisma.$queryRaw<Array<{ check_registration_rate_limit: boolean }>>`
+      SELECT check_registration_rate_limit(${body.picEmail}::VARCHAR, 5, 3)
+    `;
+
+    if (!rateLimitOk[0]?.check_registration_rate_limit) {
+      // Update idempotency as failed using raw query
+      await prisma.$executeRaw`
+        UPDATE idempotency_keys 
+        SET status = 'failed', 
+            response = ${JSON.stringify({ error: 'Too many registration attempts' })}::JSONB
+        WHERE key = ${idempotencyKey}
+      `;
+
+      return NextResponse.json(
+        { error: 'Terlalu banyak percobaan registrasi. Coba lagi dalam 5 menit.' },
+        { status: 429 }
+      );
+    }
+
+    // Log registration attempt
+    await prisma.$executeRaw`
+      INSERT INTO registration_attempts (email, category, ip_address, attempt_data, created_at)
+      VALUES (
+        ${body.picEmail}, 
+        ${body.category}, 
+        ${request.headers.get('x-forwarded-for') || 'unknown'}, 
+        ${JSON.stringify(body)}::JSONB,
+        NOW()
+      )
+    `;
+
+    // Validate PIC WhatsApp
+    const formattedPicWhatsApp = formatWhatsAppNumber(body.picWhatsapp);
+    if (!validateWhatsAppNumber(formattedPicWhatsApp)) {
+      throw new Error('Format WhatsApp PIC tidak valid');
+    }
+
+    // Validate all members
+    for (const member of body.members) {
+      const formattedWa = formatWhatsAppNumber(member.whatsapp);
+      if (!validateWhatsAppNumber(formattedWa)) {
+        throw new Error(`Format WhatsApp tidak valid untuk: ${member.fullName}`);
+      }
+      if (!member.email.includes('@')) {
+        throw new Error(`Email tidak valid untuk: ${member.fullName}`);
+      }
+      // Validate age (min 12 for 5K, 17 for 10K)
+      const birthDate = new Date(member.dateOfBirth);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const m = today.getMonth() - birthDate.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      const minAge = body.category === '5K' ? 12 : 17;
+      if (age < minAge) {
+        throw new Error(`${member.fullName} belum mencukupi umur minimal ${minAge} tahun untuk kategori ${body.category}`);
+      }
+    }
+
+    // Check existing registrations
+    const memberEmails = body.members.map(m => m.email);
     const existingParticipants = await prisma.participant.findMany({
-      where: { email: { in: emails } },
+      where: {
+        email: { in: memberEmails },
+        category: body.category,
+        registrationStatus: { in: ['PENDING', 'CONFIRMED'] }
+      },
       select: { email: true }
     });
 
     if (existingParticipants.length > 0) {
-      const duplicateEmails = existingParticipants.map(p => p.email);
-      return NextResponse.json(
-        {
-          error: 'Email sudah terdaftar',
-          duplicateEmails
-        },
-        { status: 400 }
-      );
+      throw new Error(`Email sudah terdaftar di kategori ${body.category}: ${existingParticipants.map(p => p.email).join(', ')}`);
     }
 
-    // Generate registration code for community
-    const communityRegCode = `COM-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    // Calculate pricing
+    const pricing = calculateCommunityPrice(body.category, body.members);
 
-    // Generate BIB numbers for all members
-    const bibNumbers = await generateBibNumbers(body.category, body.members.length);
-
-    // Calculate total prices
-    let totalBasePrice = 0;
-    let totalJerseyAddOn = 0;
-    const memberPricings = body.members.map((member: { jerseySize: string }) => {
-      const pricing = calculateCommunityPrice(body.category, member.jerseySize);
-      totalBasePrice += pricing.basePrice;
-      totalJerseyAddOn += pricing.jerseyAddOn;
-      return pricing;
-    });
-
-    const finalPrice = totalBasePrice + totalJerseyAddOn;
-
-    console.log('💰 Price Calculation:', {
-      totalBasePrice,
-      totalJerseyAddOn,
-      finalPrice
-    });
-
-    // Create everything in a transaction
+    // Main transaction with proper isolation
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Create community registration
-      const communityReg = await tx.communityRegistration.create({
+      // Generate community code using database function
+      const communityCodeResult = await tx.$queryRaw<Array<{ generate_community_code: string }>>`
+        SELECT generate_community_code() as generate_community_code
+      `;
+      const communityCode = communityCodeResult[0].generate_community_code;
+
+      // Create community registration
+      const community = await tx.communityRegistration.create({
         data: {
           communityName: body.communityName,
           communityType: body.communityType || 'RUNNING_CLUB',
           communityAddress: body.address,
           picName: body.picName,
-          picWhatsapp: body.picWhatsapp,
+          picWhatsapp: formattedPicWhatsApp,
           picEmail: body.picEmail,
           picPosition: body.picPosition || 'PIC',
-          registrationCode: communityRegCode,
+          registrationCode: communityCode,
           totalMembers: body.members.length,
           category: body.category,
-          basePrice: Math.floor(totalBasePrice / body.members.length), // Average base price
-          totalBasePrice,
-          jerseyAddOn: totalJerseyAddOn,
-          finalPrice,
-          appliedPromo: 'COMMUNITY_5%',
+          basePrice: pricing.basePrice,
+          totalBasePrice: pricing.totalBasePrice,
+          promoAmount: 0, // No promo as per requirements
+          jerseyAddOn: pricing.jerseyAddOnTotal,
+          finalPrice: pricing.finalPrice,
+          appliedPromo: null,
           registrationStatus: 'PENDING'
         }
       });
 
-      console.log('✅ Community registration created:', communityReg.id);
-
-      // 2. Create participants and community members
+      // Create participants with atomic BIB generation
       const participants = [];
       const racePacks = [];
 
       for (let i = 0; i < body.members.length; i++) {
         const member = body.members[i];
-        const pricing = memberPricings[i];
 
-        // Create participant
+        // Generate BIB number using database function
+        const bibResult = await tx.$queryRaw<Array<{ generate_bib_number: string }>>`
+          SELECT generate_bib_number(${body.category}::VARCHAR) as generate_bib_number
+        `;
+        const bibNumber = bibResult[0].generate_bib_number;
+
+        const formattedMemberWhatsApp = formatWhatsAppNumber(member.whatsapp);
+
         const participant = await tx.participant.create({
           data: {
             fullName: member.fullName,
             gender: member.gender,
             dateOfBirth: new Date(member.dateOfBirth),
-            idNumber: member.idNumber,
+            idNumber: member.identityNumber,
             bloodType: member.bloodType || null,
             email: member.email,
-            whatsapp: member.whatsapp,
-            address: body.address, // Use community address
-            province: body.province,
-            city: body.city,
-            postalCode: body.postalCode || null,
+            whatsapp: formattedMemberWhatsApp,
+            address: member.address || body.address,
+            province: member.province || body.province,
+            city: member.city || body.city,
+            postalCode: member.postalCode || null,
             category: body.category,
-            bibName: member.bibName,
+            bibName: member.bibName || member.fullName.substring(0, 10).toUpperCase(),
             jerseySize: member.jerseySize,
             estimatedTime: member.estimatedTime || null,
             emergencyName: member.emergencyName,
@@ -148,85 +315,68 @@ export async function POST(request: NextRequest) {
             medicalHistory: member.medicalHistory || null,
             allergies: member.allergies || null,
             medications: member.medications || null,
-            bibNumber: bibNumbers[i],
-            registrationCode: `${communityRegCode}-${i + 1}`,
+            bibNumber,
+            registrationCode: `${communityCode}-M${(i + 1).toString().padStart(2, '0')}`,
             registrationType: 'COMMUNITY',
             basePrice: pricing.basePrice,
-            jerseyAddOn: pricing.jerseyAddOn,
-            totalPrice: pricing.totalPrice,
+            jerseyAddOn: member.jerseySize === 'XXL' || member.jerseySize === 'XXXL' ? PRICING[body.category].jerseyAddOn : 0,
+            totalPrice: pricing.pricePerPerson,
             isEarlyBird: false,
             registrationStatus: 'PENDING'
           }
         });
 
-        participants.push(participant);
-
-        // Create community member relation
         await tx.communityMember.create({
           data: {
-            communityRegistrationId: communityReg.id,
+            communityRegistrationId: community.id,
             participantId: participant.id,
             memberNumber: i + 1,
             isFreeMember: false
           }
         });
 
-        // Create race pack (single QR for PIC, individual packs for members)
         const racePack = await tx.racePack.create({
           data: {
             participantId: participant.id,
-            qrCode: i === 0 ? `QR-${communityRegCode}` : `QR-${participant.registrationCode}`,
             hasJersey: true,
             hasBib: true,
             hasGoodieBag: true,
-            notes: i === 0 ? 'PIC - Collect for all community members' : `Community member ${i + 1}`
+            qrCode: `QR-${participant.registrationCode}-${Date.now()}`
           }
         });
 
+        participants.push(participant);
         racePacks.push(racePack);
       }
 
-      console.log(`✅ Created ${participants.length} participants`);
-
-      // 3. Create single payment for community
+      // Create payment record
       const payment = await tx.payment.create({
         data: {
-          communityRegistrationId: communityReg.id,
-          amount: finalPrice,
+          communityRegistrationId: community.id,
+          amount: pricing.finalPrice,
           status: 'PENDING',
-          expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-          metadata: {
-            type: 'COMMUNITY',
-            totalMembers: body.members.length,
-            communityName: body.communityName
-          }
+          paymentCode: `PAY-${communityCode}-${Date.now()}`,
+          expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
         }
       });
 
-      console.log('✅ Payment record created:', payment.paymentCode);
-
-      return {
-        communityRegistration: communityReg,
-        participants,
-        racePacks,
-        payment
-      };
+      return { community, participants, racePacks, payment };
     }, {
-      maxWait: 5000, // Wait max 5 seconds
-      timeout: 30000, // Transaction timeout 30 seconds
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      timeout: 30000 // 30 seconds timeout
     });
 
-    // Prepare response
-    const response = {
+    // Prepare success response
+    const successResponse = {
       success: true,
       data: {
-        registrationCode: result.communityRegistration.registrationCode,
-        communityName: result.communityRegistration.communityName,
-        totalMembers: result.participants.length,
-        totalPrice: result.communityRegistration.finalPrice,
+        registrationCode: result.community.registrationCode,
+        communityName: result.community.communityName,
+        totalMembers: result.community.totalMembers,
+        totalPrice: pricing.finalPrice,
         paymentCode: result.payment.paymentCode,
-        qrCode: result.racePacks[0].qrCode, // PIC's QR code
-        members: result.participants.map((p) => ({
+        paymentUrl: `${process.env.NEXT_PUBLIC_APP_URL}/payment/${result.payment.paymentCode}`,
+        members: result.participants.map(p => ({
           name: p.fullName,
           bibNumber: p.bibNumber,
           registrationCode: p.registrationCode
@@ -234,67 +384,114 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    console.log('✅ Community registration completed successfully');
+    // Update idempotency record with success
+    await prisma.$executeRaw`
+      UPDATE idempotency_keys 
+      SET status = 'completed', 
+          response = ${JSON.stringify(successResponse)}::JSONB
+      WHERE key = ${idempotencyKey}
+    `;
 
-    return NextResponse.json(response);
+    // Update registration attempt as successful
+    await prisma.$executeRaw`
+      UPDATE registration_attempts 
+      SET success = true 
+      WHERE email = ${body.picEmail} 
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `;
+
+    // Send WhatsApp notification (async, don't block response)
+    setImmediate(async () => {
+      try {
+        const waMessage = `🏃 *REGISTRASI KOMUNITAS BERHASIL!*
+
+Halo *${body.picName}*,
+
+Registrasi komunitas *${body.communityName}* telah berhasil!
+
+📋 *DETAIL:*
+• Kode: *${result.community.registrationCode}*
+• Kategori: *${body.category}*
+• Jumlah: *${body.members.length} peserta*
+• Total: *Rp ${pricing.finalPrice.toLocaleString('id-ID')}*
+
+👥 *PESERTA:*
+${result.participants.map((p, i) => `${i + 1}. ${p.fullName} - BIB: ${p.bibNumber}`).join('\n')}
+
+💳 *PEMBAYARAN:*
+Kode: *${result.payment.paymentCode}*
+Link: ${process.env.NEXT_PUBLIC_APP_URL}/payment/${result.payment.paymentCode}
+
+Terima kasih! 🙏`;
+
+        await WhatsAppService.sendMessage(formattedPicWhatsApp, waMessage);
+      } catch (waError) {
+        console.error('WhatsApp notification error:', waError);
+      }
+    });
+
+    return NextResponse.json(successResponse);
 
   } catch (error) {
-    console.error('❌ Community registration error:', error);
+    console.error('Community registration error:', error);
 
-    // Better error handling
-    if (error instanceof Error) {
-      return NextResponse.json(
-        {
-          error: 'Terjadi kesalahan saat mendaftar',
-          message: error.message,
-          details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        },
-        { status: 500 }
-      );
+    // Update idempotency as failed if key exists
+    if (idempotencyKey) {
+      try {
+        await prisma.$executeRaw`
+          UPDATE idempotency_keys 
+          SET status = 'failed', 
+              response = ${JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' })}::JSONB
+          WHERE key = ${idempotencyKey}
+        `;
+      } catch (updateError) {
+        console.error('Failed to update idempotency record:', updateError);
+      }
     }
 
+    // Log failed attempt
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
     return NextResponse.json(
-      { error: 'Terjadi kesalahan tidak diketahui' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
 }
 
-// GET endpoint untuk check status
+// GET handler remains the same but with better error handling
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const registrationCode = searchParams.get('code');
+    const { searchParams } = new URL(request.url);
+    const code = searchParams.get('code');
 
-    if (!registrationCode) {
+    if (!code) {
       return NextResponse.json(
-        { error: 'Kode registrasi harus diisi' },
+        { error: 'Registration code is required' },
         { status: 400 }
       );
     }
 
-    const communityReg = await prisma.communityRegistration.findUnique({
-      where: { registrationCode },
+    const community = await prisma.communityRegistration.findUnique({
+      where: { registrationCode: code },
       include: {
         members: {
           include: {
-            participant: {
-              include: {
-                racePack: true
-              }
-            }
+            participant: true
           }
         },
         payments: {
+          where: { status: { in: ['PENDING', 'PAID'] } },
           orderBy: { createdAt: 'desc' },
           take: 1
         }
       }
     });
 
-    if (!communityReg) {
+    if (!community) {
       return NextResponse.json(
-        { error: 'Registrasi komunitas tidak ditemukan' },
+        { error: 'Community registration not found' },
         { status: 404 }
       );
     }
@@ -302,15 +499,30 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        community: communityReg,
-        payment: communityReg.payments[0] || null
+        community: {
+          id: community.id,
+          communityName: community.communityName,
+          picName: community.picName,
+          picEmail: community.picEmail,
+          category: community.category,
+          totalMembers: community.totalMembers,
+          registrationCode: community.registrationCode,
+          registrationStatus: community.registrationStatus,
+          finalPrice: community.finalPrice
+        },
+        members: community.members.map(m => ({
+          fullName: m.participant.fullName,
+          email: m.participant.email,
+          bibNumber: m.participant.bibNumber,
+          jerseySize: m.participant.jerseySize
+        })),
+        payment: community.payments[0] || null
       }
     });
-
   } catch (error) {
-    console.error('Error fetching community registration:', error);
+    console.error('GET community registration error:', error);
     return NextResponse.json(
-      { error: 'Terjadi kesalahan' },
+      { error: 'Failed to fetch community registration' },
       { status: 500 }
     );
   }

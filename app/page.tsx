@@ -78,10 +78,10 @@ function Navbar() {
 // Countdown Timer Component
 function CountdownTimer({ targetDate }: { targetDate: Date }) {
   const [timeLeft, setTimeLeft] = useState({
-    days: 0,
-    hours: 0,
-    minutes: 0,
-    seconds: 0,
+    Hari: 0,
+    Jam: 0,
+    Menit: 0,
+    Detik: 0,
   });
 
   useEffect(() => {
@@ -91,10 +91,10 @@ function CountdownTimer({ targetDate }: { targetDate: Date }) {
 
       if (distance > 0) {
         setTimeLeft({
-          days: Math.floor(distance / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-          minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
-          seconds: Math.floor((distance % (1000 * 60)) / 1000),
+          Hari: Math.floor(distance / (1000 * 60 * 60 * 24)),
+          Jam: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+          Menit: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+          Detik: Math.floor((distance % (1000 * 60)) / 1000),
         });
       }
     };
@@ -146,7 +146,7 @@ function Footer() {
             <ul className="space-y-2 text-white/80">
               <li className="flex items-center">
                 <Phone className="w-4 h-4 mr-2" />
-                <span>0895422741155</span>
+                <span>085890031215</span>
               </li>
               <li className="flex items-center">
                 <Mail className="w-4 h-4 mr-2" />
@@ -157,17 +157,17 @@ function Footer() {
           <div>
             <h4 className="font-semibold mb-4">Follow Us</h4>
             <div className="flex space-x-4">
-              <a href="#" className="hover:text-secondary transition">
+              <a href="https://instagram.com/sukamajurun2025" className="hover:text-secondary transition">
                 <Instagram className="w-6 h-6" />
               </a>
-              <a href="#" className="hover:text-secondary transition">
+              <a href="https://facebook.com/sukamajurun2025" className="hover:text-secondary transition">
                 <Facebook className="w-6 h-6" />
               </a>
             </div>
           </div>
         </div>
         <div className="border-t border-white/20 mt-8 pt-8 text-center text-white/60">
-          <p>&copy; made with ☠ by <a href="https://kiiiii.netlify.app/">Taufiqurrahman</a>. All rights reserved.</p>
+          <p>&copy; made with ⚡ by <a href="https://kiiiii.netlify.app/">Taufiqurrahman</a>. All rights reserved.</p>
         </div>
       </div>
     </footer>
@@ -178,7 +178,7 @@ function Footer() {
 function WhatsAppCTA() {
   return (
     <a
-      href="https://wa.me/62895422741155"
+      href="https://wa.me/+6285890031215"
       target="_blank"
       rel="noopener noreferrer"
       className="fixed bottom-6 right-6 bg-green-500 text-white p-4 rounded-full shadow-lg hover:bg-green-600 transition-all duration-300 hover:scale-110 z-40"
@@ -205,8 +205,8 @@ export default function HomePage() {
   const scheduleCards = [
     {
       title: "Masa Registrasi",
-      date: "1 Juli - 31 Oktober 2025",
-      description: "Pendaftaran online dibuka untuk kategori 5K dan 10K",
+      date: "1 September - 5 Oktober 2025",
+      description: "Pendaftaran online dibuka untuk semua kategori",
       icon: <Calendar className="w-6 h-6" />,
     },
     {

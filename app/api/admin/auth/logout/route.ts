@@ -1,18 +1,50 @@
-import { NextResponse } from 'next/server';
+import { AuthService } from "@/lib/auth";
+import prisma from "@/lib/prisma";
+import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST() {
-  const response = NextResponse.json({
-    success: true,
-    message: 'Logged out successfully'
-  });
+export async function POST_LOGOUT(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('admin-token');
 
-  // Clear the auth cookie
-  response.cookies.set('admin-token', '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 0
-  });
+    if (token) {
+      // Verify token to get admin info for logging
+      const admin = await AuthService.verifyToken(token.value);
 
-  return response;
+      if (admin) {
+        // Log the logout
+        await prisma.adminLog.create({
+          data: {
+            adminId: admin.id,
+            action: 'LOGOUT',
+            details: {
+              timestamp: new Date().toISOString()
+            },
+            ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+            userAgent: request.headers.get('user-agent') || null
+          }
+        });
+      }
+    }
+
+    // Clear cookie
+    cookieStore.delete('admin-token');
+
+    return NextResponse.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+
+  } catch (error) {
+    console.error('Logout error:', error);
+    // Even if there's an error, still clear the cookie
+    const cookieStore = await cookies();
+    cookieStore.delete('admin-token');
+
+    return NextResponse.json({
+      success: true,
+      message: 'Logged out'
+    });
+  }
 }

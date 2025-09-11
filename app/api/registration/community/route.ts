@@ -1,13 +1,13 @@
 // app/api/registration/community/route.ts
 import { WhatsAppService } from '@/lib/services/whatsapp.service';
+import { generateBibNumbersBatch, generateCommunityCode } from '@/lib/utils/bib-generator';
 import { formatWhatsAppNumber, validateWhatsAppNumber } from '@/lib/utils/whatsapp-formatter';
 import { Prisma, PrismaClient } from '@prisma/client';
-import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
 const prisma = new PrismaClient();
 
-// Constants for pricing (fixed as per requirements)
+// Constants for pricing
 const PRICING = {
   '5K': {
     basePrice: 171000,
@@ -55,21 +55,12 @@ interface CommunityRegistrationBody {
   city: string;
   province: string;
   members: CommunityMemberData[];
-  idempotencyKey?: string; // Optional from client
+  idempotencyKey?: string;
 }
 
 // Helper: Generate request hash for idempotency
-function generateRequestHash(body: CommunityRegistrationBody): string {
-  const data = {
-    communityName: body.communityName,
-    picEmail: body.picEmail,
-    category: body.category,
-    memberEmails: body.members.map(m => m.email).sort()
-  };
-  return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex');
-}
 
-// Helper: Calculate community pricing with jersey add-ons
+// Helper: Calculate community pricing
 function calculateCommunityPrice(
   category: '5K' | '10K',
   members: CommunityMemberData[]
@@ -77,7 +68,6 @@ function calculateCommunityPrice(
   const basePrice = PRICING[category].basePrice;
   const totalBasePrice = basePrice * members.length;
 
-  // Calculate jersey add-ons for XXL/XXXL
   let jerseyAddOnTotal = 0;
   const jerseyAdjustments: Array<{
     memberName: string;
@@ -107,18 +97,17 @@ function calculateCommunityPrice(
   };
 }
 
-// Main POST handler with idempotency and race condition prevention
+// Main POST handler
 export async function POST(request: NextRequest) {
   let idempotencyKey: string | null = null;
 
   try {
     const body: CommunityRegistrationBody = await request.json();
 
-    // Generate or use provided idempotency key
+    // Generate idempotency key
     idempotencyKey = body.idempotencyKey ||
       `com-${body.picEmail}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    const requestHash = generateRequestHash(body);
 
     console.log('Community Registration Request:', {
       communityName: body.communityName,
@@ -127,7 +116,7 @@ export async function POST(request: NextRequest) {
       idempotencyKey
     });
 
-    // Validations
+    // Basic validations
     if (!body.members || body.members.length < 5) {
       return NextResponse.json(
         { error: 'Minimum 5 anggota untuk registrasi komunitas' },
@@ -141,63 +130,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    // Check idempotency first
-    const idempotencyCheck = await prisma.$queryRaw<Array<{
-      is_duplicate: boolean;
-      existing_response: unknown;
-      existing_status: string;
-    }>>`
-      SELECT * FROM check_idempotency(
-        ${idempotencyKey}::VARCHAR,
-        ${requestHash}::VARCHAR,
-        24
-      )
-    `;
-
-    if (idempotencyCheck[0]?.is_duplicate) {
-      console.log('Duplicate request detected, returning cached response');
-      if (idempotencyCheck[0].existing_status === 'completed') {
-        return NextResponse.json(idempotencyCheck[0].existing_response);
-      } else {
-        return NextResponse.json(
-          { error: 'Request is still processing, please wait' },
-          { status: 409 }
-        );
-      }
-    }
-
-    // Check rate limiting
-    const rateLimitOk = await prisma.$queryRaw<Array<{ check_registration_rate_limit: boolean }>>`
-      SELECT check_registration_rate_limit(${body.picEmail}::VARCHAR, 5, 3)
-    `;
-
-    if (!rateLimitOk[0]?.check_registration_rate_limit) {
-      // Update idempotency as failed using raw query
-      await prisma.$executeRaw`
-        UPDATE idempotency_keys 
-        SET status = 'failed', 
-            response = ${JSON.stringify({ error: 'Too many registration attempts' })}::JSONB
-        WHERE key = ${idempotencyKey}
-      `;
-
-      return NextResponse.json(
-        { error: 'Terlalu banyak percobaan registrasi. Coba lagi dalam 5 menit.' },
-        { status: 429 }
-      );
-    }
-
-    // Log registration attempt
-    await prisma.$executeRaw`
-      INSERT INTO registration_attempts (email, category, ip_address, attempt_data, created_at)
-      VALUES (
-        ${body.picEmail}, 
-        ${body.category}, 
-        ${request.headers.get('x-forwarded-for') || 'unknown'}, 
-        ${JSON.stringify(body)}::JSONB,
-        NOW()
-      )
-    `;
 
     // Validate PIC WhatsApp
     const formattedPicWhatsApp = formatWhatsAppNumber(body.picWhatsapp);
@@ -214,7 +146,8 @@ export async function POST(request: NextRequest) {
       if (!member.email.includes('@')) {
         throw new Error(`Email tidak valid untuk: ${member.fullName}`);
       }
-      // Validate age (min 12 for 5K, 17 for 10K)
+
+      // Validate age
       const birthDate = new Date(member.dateOfBirth);
       const today = new Date();
       let age = today.getFullYear() - birthDate.getFullYear();
@@ -246,13 +179,13 @@ export async function POST(request: NextRequest) {
     // Calculate pricing
     const pricing = calculateCommunityPrice(body.category, body.members);
 
-    // Main transaction with proper isolation
+    // Main transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Generate community code using database function
-      const communityCodeResult = await tx.$queryRaw<Array<{ generate_community_code: string }>>`
-        SELECT generate_community_code() as generate_community_code
-      `;
-      const communityCode = communityCodeResult[0].generate_community_code;
+      // Generate community code (simple counter)
+      const communityCode = await generateCommunityCode(tx);
+
+      // Pre-generate all BIB numbers to avoid gaps
+      const bibNumbers = await generateBibNumbersBatch(body.category, body.members.length, tx);
 
       // Create community registration
       const community = await tx.communityRegistration.create({
@@ -269,7 +202,7 @@ export async function POST(request: NextRequest) {
           category: body.category,
           basePrice: pricing.basePrice,
           totalBasePrice: pricing.totalBasePrice,
-          promoAmount: 0, // No promo as per requirements
+          promoAmount: 0,
           jerseyAddOn: pricing.jerseyAddOnTotal,
           finalPrice: pricing.finalPrice,
           appliedPromo: null,
@@ -277,19 +210,13 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Create participants with atomic BIB generation
+      // Create participants
       const participants = [];
       const racePacks = [];
 
       for (let i = 0; i < body.members.length; i++) {
         const member = body.members[i];
-
-        // Generate BIB number using database function
-        const bibResult = await tx.$queryRaw<Array<{ generate_bib_number: string }>>`
-          SELECT generate_bib_number(${body.category}::VARCHAR) as generate_bib_number
-        `;
-        const bibNumber = bibResult[0].generate_bib_number;
-
+        const bibNumber = bibNumbers[i]; // Use pre-generated BIB
         const formattedMemberWhatsApp = formatWhatsAppNumber(member.whatsapp);
 
         const participant = await tx.participant.create({
@@ -363,10 +290,10 @@ export async function POST(request: NextRequest) {
       return { community, participants, racePacks, payment };
     }, {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      timeout: 30000 // 30 seconds timeout
+      timeout: 30000
     });
 
-    // Prepare success response
+    // Success response
     const successResponse = {
       success: true,
       data: {
@@ -384,24 +311,7 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    // Update idempotency record with success
-    await prisma.$executeRaw`
-      UPDATE idempotency_keys 
-      SET status = 'completed', 
-          response = ${JSON.stringify(successResponse)}::JSONB
-      WHERE key = ${idempotencyKey}
-    `;
-
-    // Update registration attempt as successful
-    await prisma.$executeRaw`
-      UPDATE registration_attempts 
-      SET success = true 
-      WHERE email = ${body.picEmail} 
-      ORDER BY created_at DESC 
-      LIMIT 1
-    `;
-
-    // Send WhatsApp notification (async, don't block response)
+    // Send WhatsApp notification (async)
     setImmediate(async () => {
       try {
         const waMessage = `🏃 *REGISTRASI KOMUNITAS BERHASIL!*
@@ -435,22 +345,6 @@ Terima kasih! 🙏`;
 
   } catch (error) {
     console.error('Community registration error:', error);
-
-    // Update idempotency as failed if key exists
-    if (idempotencyKey) {
-      try {
-        await prisma.$executeRaw`
-          UPDATE idempotency_keys 
-          SET status = 'failed', 
-              response = ${JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' })}::JSONB
-          WHERE key = ${idempotencyKey}
-        `;
-      } catch (updateError) {
-        console.error('Failed to update idempotency record:', updateError);
-      }
-    }
-
-    // Log failed attempt
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     return NextResponse.json(
@@ -460,7 +354,7 @@ Terima kasih! 🙏`;
   }
 }
 
-// GET handler remains the same but with better error handling
+// GET handler
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

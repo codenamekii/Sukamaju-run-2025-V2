@@ -1,91 +1,148 @@
-import { PrismaClient } from '@prisma/client';
-import { getServerSession } from 'next-auth';
+// app/api/admin/checkin/route.ts
+import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 
-const prisma = new PrismaClient();
-
-// GET - Fetch all participants for check-in
+// GET - Fetch participants for check-in page
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const searchParams = request.nextUrl.searchParams;
-    const status = searchParams.get('status');
-    const search = searchParams.get('search');
-    const category = searchParams.get('category');
+
+    // Pagination
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
 
-    const where: Record<string, unknown> = {};
+    // Filters
+    const search = searchParams.get('search') || '';
+    const status = searchParams.get('status') || 'all';
+    const category = searchParams.get('category') || 'all';
 
-    if (status) {
-      where.checkinStatus = status;
-    }
+    // Build where clause
+    const where: Prisma.ParticipantWhereInput = {
+      registrationStatus: 'CONFIRMED' // Only show confirmed participants
+    };
 
+    // Search filter
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
+        { fullName: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
         { registrationCode: { contains: search, mode: 'insensitive' } },
-        { bibNumber: { contains: search, mode: 'insensitive' } }
+        { bibNumber: { contains: search } }
       ];
     }
 
-    if (category) {
+    // Category filter
+    if (category !== 'all') {
       where.category = category;
     }
 
+    // Status filter (based on racePack collection status)
+    if (status === 'COLLECTED') {
+      where.racePack = {
+        isCollected: true
+      };
+    } else if (status === 'PENDING') {
+      where.OR = [
+        { racePack: { isCollected: false } },
+        { racePack: null }
+      ];
+    }
+
+    // Get participants with race pack info
     const [participants, total] = await Promise.all([
       prisma.participant.findMany({
         where,
         include: {
-          payment: true,
-          community: {
+          racePack: true,
+          payments: {
+            where: { status: 'SUCCESS' },
+            orderBy: { createdAt: 'desc' },
+            take: 1
+          },
+          communityMember: {
             include: {
-              members: true
+              communityRegistration: {
+                select: {
+                  communityName: true
+                }
+              }
             }
           }
         },
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
+        skip,
         take: limit
       }),
       prisma.participant.count({ where })
     ]);
 
-    // Get check-in statistics
-    type GroupedCheckin = {
-      checkinStatus: string;
-      _count: { _all: number };
-    };
-
-    const stats = await prisma.participant.groupBy({
-      by: ['checkinStatus'],
-      _count: { _all: true },
+    // Calculate stats
+    const stats = await prisma.racePack.aggregate({
+      where: {
+        participant: {
+          registrationStatus: 'CONFIRMED'
+        }
+      },
+      _count: {
+        _all: true,
+        isCollected: true
+      }
     });
 
-    const formattedStats = {
-      total,
-      checkedIn: stats.find((s: GroupedCheckin) => s.checkinStatus === 'CHECKED_IN')?._count._all || 0,
-      pending: stats.find((s: GroupedCheckin) => s.checkinStatus === 'PENDING')?._count._all || 0,
-      noShow: stats.find((s: GroupedCheckin) => s.checkinStatus === 'NO_SHOW')?._count._all || 0,
-    };
+    const totalConfirmed = await prisma.participant.count({
+      where: { registrationStatus: 'CONFIRMED' }
+    });
+
+    const collected = await prisma.racePack.count({
+      where: { isCollected: true }
+    });
+
+    // Transform data for frontend
+    const transformedParticipants = participants.map(p => ({
+      id: p.id,
+      registrationCode: p.registrationCode,
+      bibNumber: p.bibNumber || '',
+      name: p.fullName,
+      email: p.email,
+      phone: p.whatsapp,
+      category: p.category,
+      checkinStatus: p.racePack?.isCollected ? 'COLLECTED' : 'PENDING',
+      checkinTime: p.racePack?.collectedAt?.toISOString() || null,
+      checkinNotes: p.racePack?.notes || null,
+      racePackCollected: p.racePack?.isCollected || false,
+      racePackCollectedAt: p.racePack?.collectedAt?.toISOString() || null,
+      racePackQrCode: p.racePack?.qrCode || null,
+      payment: {
+        status: p.payments[0]?.status || 'NO_PAYMENT',
+        amount: p.payments[0]?.amount || 0
+      },
+      community: p.communityMember ? {
+        name: p.communityMember.communityRegistration?.communityName || '',
+        members: []
+      } : undefined,
+      createdAt: p.createdAt.toISOString()
+    }));
 
     return NextResponse.json({
-      participants,
+      participants: transformedParticipants,
+      stats: {
+        total: totalConfirmed,
+        checkedIn: collected,
+        pending: totalConfirmed - collected,
+        noShow: 0 // Not applicable for race pack collection
+      },
       pagination: {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit)
-      },
-      stats: formattedStats
+      }
     });
+
   } catch (error) {
-    console.error('Check-in fetch error:', error);
+    console.error('Error fetching check-in data:', error);
     return NextResponse.json(
       { error: 'Failed to fetch check-in data' },
       { status: 500 }
@@ -93,127 +150,95 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Process check-in
+// POST - Collect race pack (single or via QR scan)
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
-    const { participantId, action, notes } = body;
+    const { participantId, qrCode, action, collectorInfo } = body;
 
-    if (!participantId || !action) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+    // Handle QR code scan
+    if (qrCode && !participantId) {
+      // Parse QR code format: BM2025-QR-[PARTICIPANT_ID]-[CHECKSUM]
+      const qrParts = qrCode.split('-');
+      if (qrParts.length < 3 || qrParts[0] !== 'BM2025' || qrParts[1] !== 'QR') {
+        return NextResponse.json(
+          { error: 'Invalid QR code format' },
+          { status: 400 }
+        );
+      }
+
+      const extractedParticipantId = qrParts[2];
+
+      // Find participant by ID or by QR code in racePack
+      const participant = await prisma.participant.findFirst({
+        where: {
+          OR: [
+            { id: extractedParticipantId },
+            { racePack: { qrCode } }
+          ]
+        },
+        include: {
+          racePack: true
+        }
+      });
+
+      if (!participant) {
+        return NextResponse.json(
+          {
+            error: 'Participant not found',
+            details: 'QR code tidak valid atau peserta tidak terdaftar'
+          },
+          { status: 404 }
+        );
+      }
+
+      // Check if already collected
+      if (participant.racePack?.isCollected) {
+        return NextResponse.json(
+          {
+            error: 'Race pack already collected',
+            details: `Sudah diambil pada ${new Date(participant.racePack.collectedAt!).toLocaleString('id-ID')}`,
+            participant: {
+              name: participant.fullName,
+              bibNumber: participant.bibNumber,
+              category: participant.category,
+              collectedAt: participant.racePack.collectedAt
+            }
+          },
+          { status: 400 }
+        );
+      }
+
+      // Perform collection
+      return await collectRacePack(participant.id, collectorInfo);
     }
 
-    // Validate action
-    if (!['CHECK_IN', 'UNDO_CHECK_IN', 'MARK_NO_SHOW'].includes(action)) {
-      return NextResponse.json(
-        { error: 'Invalid action' },
-        { status: 400 }
-      );
-    }
+    // Handle manual action
+    if (participantId && action) {
+      switch (action) {
+        case 'CHECK_IN':
+        case 'COLLECT':
+          return await collectRacePack(participantId, collectorInfo);
 
-    // Find participant
-    const participant = await prisma.participant.findUnique({
-      where: { id: participantId },
-      include: { payment: true }
-    });
+        case 'UNDO_CHECK_IN':
+        case 'UNCOLLECT':
+          return await undoCollection(participantId);
 
-    if (!participant) {
-      return NextResponse.json(
-        { error: 'Participant not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if payment is confirmed
-    if (participant.payment?.status !== 'PAID') {
-      return NextResponse.json(
-        { error: 'Payment not confirmed' },
-        { status: 400 }
-      );
-    }
-
-    let updateData: Record<string, unknown> = {};
-
-    switch (action) {
-      case 'CHECK_IN':
-        if (participant.checkinStatus === 'CHECKED_IN') {
+        default:
           return NextResponse.json(
-            { error: 'Already checked in' },
+            { error: 'Invalid action' },
             { status: 400 }
           );
-        }
-        updateData = {
-          checkinStatus: 'CHECKED_IN',
-          checkinTime: new Date(),
-          checkinNotes: notes,
-          racePackCollected: true,
-          racePackCollectedAt: new Date()
-        };
-        break;
-
-      case 'UNDO_CHECK_IN':
-        if (participant.checkinStatus !== 'CHECKED_IN') {
-          return NextResponse.json(
-            { error: 'Not checked in' },
-            { status: 400 }
-          );
-        }
-        updateData = {
-          checkinStatus: 'PENDING',
-          checkinTime: null,
-          checkinNotes: null,
-          racePackCollected: false,
-          racePackCollectedAt: null
-        };
-        break;
-
-      case 'MARK_NO_SHOW':
-        updateData = {
-          checkinStatus: 'NO_SHOW',
-          checkinNotes: notes
-        };
-        break;
+      }
     }
 
-    // Update participant
-    const updated = await prisma.participant.update({
-      where: { id: participantId },
-      data: updateData,
-      include: {
-        payment: true,
-        community: true
-      }
-    });
+    return NextResponse.json(
+      { error: 'Invalid request parameters' },
+      { status: 400 }
+    );
 
-    // Log activity
-    await prisma.activityLog.create({
-      data: {
-        action: `CHECK_IN_${action}`,
-        entityType: 'PARTICIPANT',
-        entityId: participantId,
-        details: {
-          participantName: participant.name,
-          action,
-          notes,
-          performedBy: session.user?.email
-        }
-      }
-    });
-
-    return NextResponse.json({
-      success: true,
-      participant: updated
-    });
   } catch (error) {
-    console.error('Check-in process error:', error);
+    console.error('Error processing check-in:', error);
     return NextResponse.json(
       { error: 'Failed to process check-in' },
       { status: 500 }
@@ -221,14 +246,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH - Batch check-in
+// PATCH - Batch operations
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getServerSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await request.json();
     const { participantIds, action } = body;
 
@@ -239,57 +259,204 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const results = {
-      success: [] as string[],
-      failed: [] as { id: string; reason: string }[]
-    };
+    let successCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
 
-    for (const id of participantIds) {
+    for (const participantId of participantIds) {
       try {
-        const participant = await prisma.participant.findUnique({
-          where: { id },
-          include: { payment: true }
-        });
-
-        if (!participant) {
-          results.failed.push({ id, reason: 'Not found' });
-          continue;
-        }
-
-        if (participant.payment?.status !== 'PAID') {
-          results.failed.push({ id, reason: 'Payment not confirmed' });
-          continue;
-        }
-
-        if (action === 'CHECK_IN' && participant.checkinStatus === 'CHECKED_IN') {
-          results.failed.push({ id, reason: 'Already checked in' });
-          continue;
-        }
-
-        await prisma.participant.update({
-          where: { id },
-          data: {
-            checkinStatus: action === 'CHECK_IN' ? 'CHECKED_IN' : 'PENDING',
-            checkinTime: action === 'CHECK_IN' ? new Date() : null,
-            racePackCollected: action === 'CHECK_IN',
-            racePackCollectedAt: action === 'CHECK_IN' ? new Date() : null
+        if (action === 'CHECK_IN' || action === 'COLLECT') {
+          const result = await collectRacePack(participantId, {
+            method: 'batch',
+            timestamp: new Date().toISOString()
+          });
+          if (result.status === 200) {
+            successCount++;
+          } else {
+            failedCount++;
+            errors.push(`Failed for ${participantId}`);
           }
-        });
-
-        results.success.push(id);
-      } catch (error) {
-        results.failed.push({ id, reason: 'Processing error' });
+        } else if (action === 'UNDO_CHECK_IN' || action === 'UNCOLLECT') {
+          const result = await undoCollection(participantId);
+          if (result.status === 200) {
+            successCount++;
+          } else {
+            failedCount++;
+            errors.push(`Failed for ${participantId}`);
+          }
+        }
+      } catch (err) {
+        failedCount++;
+        errors.push(`Error for ${participantId}: ${err}`);
       }
     }
 
     return NextResponse.json({
-      results,
-      message: `Successfully processed ${results.success.length} participants`
+      success: true,
+      processed: successCount,
+      failed: failedCount,
+      errors: errors.length > 0 ? errors : undefined
     });
+
   } catch (error) {
-    console.error('Batch check-in error:', error);
+    console.error('Error in batch operation:', error);
     return NextResponse.json(
-      { error: 'Failed to process batch check-in' },
+      { error: 'Batch operation failed' },
+      { status: 500 }
+    );
+  }
+}
+
+// Helper function to collect race pack
+async function collectRacePack(
+  participantId: string,
+  collectorInfo?: Record<string, unknown>
+): Promise<NextResponse> {
+  try {
+    // Get participant
+    const participant = await prisma.participant.findUnique({
+      where: { id: participantId },
+      include: { racePack: true }
+    });
+
+    if (!participant) {
+      return NextResponse.json(
+        { error: 'Participant not found' },
+        { status: 404 }
+      );
+    }
+
+    if (participant.registrationStatus !== 'CONFIRMED') {
+      return NextResponse.json(
+        {
+          error: 'Participant not confirmed',
+          details: 'Peserta belum melakukan pembayaran'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Create or update race pack
+    let racePack;
+    if (participant.racePack) {
+      if (participant.racePack.isCollected) {
+        return NextResponse.json(
+          {
+            error: 'Already collected',
+            collectedAt: participant.racePack.collectedAt
+          },
+          { status: 400 }
+        );
+      }
+
+      racePack = await prisma.racePack.update({
+        where: { id: participant.racePack.id },
+        data: {
+          isCollected: true,
+          collectedAt: new Date(),
+          collectedBy: 'admin',
+          notes: collectorInfo ? JSON.stringify(collectorInfo) : null
+        }
+      });
+    } else {
+      // Generate QR code for new race pack
+      const qrCode = `BM2025-QR-${participantId}-${Date.now().toString(36)}`;
+
+      racePack = await prisma.racePack.create({
+        data: {
+          participantId,
+          qrCode,
+          isCollected: true,
+          collectedAt: new Date(),
+          collectedBy: 'admin',
+          hasJersey: participant.jerseyAddOn > 0,
+          hasBib: true,
+          hasGoodieBag: true,
+          hasMedal: false,
+          notes: collectorInfo ? JSON.stringify(collectorInfo) : null
+        }
+      });
+    }
+
+    // Log the collection
+    await prisma.notification.create({
+      data: {
+        participantId,
+        type: 'WHATSAPP',
+        category: 'INFO',
+        subject: 'Race Pack Collected',
+        message: `Race pack collected for ${participant.fullName} (BIB: ${participant.bibNumber})`,
+        status: 'SENT',
+        sentAt: new Date()
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      participant: {
+        id: participant.id,
+        name: participant.fullName,
+        bibNumber: participant.bibNumber,
+        category: participant.category,
+        jerseySize: participant.jerseySize
+      },
+      racePack: {
+        qrCode: racePack.qrCode,
+        collectedAt: racePack.collectedAt,
+        hasJersey: racePack.hasJersey,
+        hasBib: racePack.hasBib,
+        hasGoodieBag: racePack.hasGoodieBag
+      }
+    });
+
+  } catch (error) {
+    console.error('Error collecting race pack:', error);
+    return NextResponse.json(
+      { error: 'Failed to collect race pack' },
+      { status: 500 }
+    );
+  }
+}
+
+// Helper function to undo collection
+async function undoCollection(participantId: string): Promise<NextResponse> {
+  try {
+    const racePack = await prisma.racePack.findUnique({
+      where: { participantId }
+    });
+
+    if (!racePack) {
+      return NextResponse.json(
+        { error: 'No race pack record found' },
+        { status: 404 }
+      );
+    }
+
+    if (!racePack.isCollected) {
+      return NextResponse.json(
+        { error: 'Race pack not collected yet' },
+        { status: 400 }
+      );
+    }
+
+    await prisma.racePack.update({
+      where: { id: racePack.id },
+      data: {
+        isCollected: false,
+        collectedAt: null,
+        collectedBy: null
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Collection undone successfully'
+    });
+
+  } catch (error) {
+    console.error('Error undoing collection:', error);
+    return NextResponse.json(
+      { error: 'Failed to undo collection' },
       { status: 500 }
     );
   }

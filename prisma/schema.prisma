@@ -44,6 +44,7 @@ model Participant {
   certificate        Certificate?
   checkIns           CheckIn[]
   communityMember    CommunityMember?
+  Notification       Notification[]
   payments           Payment[]
   racePack           RacePack?
 
@@ -223,7 +224,7 @@ model Setting {
 }
 
 model Notification {
-  id             String    @id @default(cuid())
+  id             String       @id @default(cuid())
   recipientEmail String?
   recipientPhone String?
   participantId  String?
@@ -231,12 +232,13 @@ model Notification {
   category       String
   subject        String?
   message        String
-  status         String    @default("PENDING")
+  status         String       @default("PENDING")
   sentAt         DateTime?
   failureReason  String?
   metadata       Json?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  participant    Participant? @relation(fields: [participantId], references: [id])
 
   @@index([participantId])
   @@index([type])
@@ -245,13 +247,13 @@ model Notification {
 }
 
 model IdempotencyKey {
-  id           String   @id @default(cuid())
-  key          String   @unique
-  requestHash  String   @map("request_hash")
-  response     Json?
-  status       String   @default("processing")
-  createdAt    DateTime @default(now()) @map("created_at")
-  expiresAt    DateTime @map("expires_at")
+  id          String   @id @default(cuid())
+  key         String   @unique
+  requestHash String   @map("request_hash")
+  response    Json?
+  status      String   @default("processing")
+  createdAt   DateTime @default(now()) @map("created_at")
+  expiresAt   DateTime @map("expires_at")
 
   @@index([expiresAt])
   @@index([key, status])

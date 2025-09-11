@@ -1,14 +1,11 @@
+// lib/auth.ts
+import { AdminUser } from '@/app/admin/dashboard/types';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 
-const JWT_SECRET = process.env.NEXTAUTH_SECRET || 'your-secret-key';
-
-export interface AdminUser {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-}
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.NEXTAUTH_SECRET || 'your-secret-key-minimum-32-characters-long!!!'
+);
 
 export class AuthService {
   static async hashPassword(password: string): Promise<string> {
@@ -19,25 +16,41 @@ export class AuthService {
     return bcrypt.compare(password, hash);
   }
 
-  static generateToken(user: AdminUser): string {
-    return jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+  static async generateToken(user: AdminUser): Promise<string> {
+    const token = await new SignJWT({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('24h')
+      .sign(JWT_SECRET);
+
+    return token;
   }
 
-  static verifyToken(token: string): AdminUser | null {
+  static async verifyToken(token: string): Promise<AdminUser | null> {
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as unknown;
+      const { payload } = await jwtVerify(token, JWT_SECRET);
+
       return {
-        id: (decoded as { id: string }).id,
-        email: (decoded as { email: string }).email,
-        name: (decoded as { name: string }).name || '',
-        role: (decoded as { role: string }).role
+        id: payload.id as string,
+        email: payload.email as string,
+        name: payload.name as string,
+        role: payload.role as 'ADMIN' | 'SUPER_ADMIN' | 'VIEWER',
+        isActive: true,
+        lastLogin: null
       };
-    } catch {
+    } catch (error) {
+      console.error('Token verification failed:', error);
       return null;
     }
+  }
+
+  static async validateSession(token: string | undefined): Promise<AdminUser | null> {
+    if (!token) return null;
+    return this.verifyToken(token);
   }
 }

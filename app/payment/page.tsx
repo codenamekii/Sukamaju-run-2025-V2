@@ -1,12 +1,18 @@
 "use client";
 
+import type { RegistrationData as PaymentRegistrationData } from '@/lib/types/payment';
 import {
   AlertCircle,
   ArrowLeft,
   Building2,
   CheckCircle,
   ChevronRight,
-  Clock, CreditCard, LucideIcon, Smartphone, Store, Wallet
+  Clock,
+  CreditCard,
+  LucideIcon,
+  Smartphone,
+  Store,
+  Wallet
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -72,20 +78,22 @@ export default function PaymentPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
-  const [registrationData, setRegistrationData] = useState<any>(null);
+  const [registrationData, setRegistrationData] = useState<PaymentRegistrationData | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<string>('');
   const [selectedBank, setSelectedBank] = useState<string>('');
   const [timeLeft, setTimeLeft] = useState(86400); // 24 hours
   const [error, setError] = useState('');
 
   const registrationCode = searchParams.get('code');
-  const type = searchParams.get('type') || 'INDIVIDUAL';
+  const type = (searchParams.get('type') || 'INDIVIDUAL').toUpperCase();
 
   useEffect(() => {
     if (!registrationCode) {
       router.push("/registration");
       return;
     }
+
+    let mounted = true;
 
     const fetchData = async () => {
       try {
@@ -97,13 +105,16 @@ export default function PaymentPage() {
         const response = await fetch(endpoint);
         const data = await response.json();
 
+        if (!mounted) return;
+
         if (data.success) {
+          // Pastikan struktur data sesuai dengan tipe PaymentRegistrationData
           setRegistrationData(data.data);
         } else {
           setError("Data registrasi tidak ditemukan");
         }
-      } catch (error) {
-        console.error("Error fetching registration:", error);
+      } catch (err) {
+        console.error("Error fetching registration:", err);
         setError("Terjadi kesalahan saat memuat data");
       }
     };
@@ -120,9 +131,11 @@ export default function PaymentPage() {
       });
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
   }, [registrationCode, router, type]);
-
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -131,21 +144,33 @@ export default function PaymentPage() {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount?: number | null) => {
+    const val = typeof amount === 'number' && !Number.isNaN(amount) ? amount : 0;
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
       minimumFractionDigits: 0
-    }).format(amount);
+    }).format(val);
   };
 
   const handlePayment = async () => {
+    // Guard: pastikan data registrasi tersedia
+    if (!registrationData) {
+      setError("Data registrasi belum tersedia. Muat ulang halaman atau hubungi panitia.");
+      return;
+    }
+
     if (!selectedMethod) {
       setError('Pilih metode pembayaran');
       return;
     }
 
-    if ((selectedMethod === 'bank_transfer' || selectedMethod === 'e_wallet' || selectedMethod === 'convenience_store') && !selectedBank) {
+    if (
+      (selectedMethod === 'bank_transfer' ||
+        selectedMethod === 'e_wallet' ||
+        selectedMethod === 'convenience_store') &&
+      !selectedBank
+    ) {
       setError('Pilih bank atau provider');
       return;
     }
@@ -154,12 +179,17 @@ export default function PaymentPage() {
     setError('');
 
     try {
+      // ambil nilai dari registrationData yang sudah ter-guard
+      const reg = registrationData;
+
+      const amount = type === 'COMMUNITY'
+        ? (reg.community?.finalPrice ?? 0)
+        : (reg.participant?.totalPrice ?? 0);
+
       const paymentData = {
-        participantId: registrationData.participant?.id,
-        communityRegistrationId: registrationData.community?.id,
-        amount: type === 'COMMUNITY'
-          ? registrationData.community.finalPrice
-          : registrationData.participant.totalPrice,
+        participantId: reg.participant?.id ?? null,
+        communityRegistrationId: reg.community?.id ?? null,
+        amount,
         registrationCode,
         paymentMethod: selectedMethod,
         paymentChannel: selectedBank || selectedMethod,
@@ -174,19 +204,20 @@ export default function PaymentPage() {
       const result = await response.json();
 
       if (result.success && result.redirect_url) {
-        // Redirect to Midtrans
+        // Redirect ke gateway pembayaran
         window.location.href = result.redirect_url;
       } else {
         throw new Error(result.error || 'Payment creation failed');
       }
-    } catch (error) {
-      console.error('Payment error:', error);
-      setError(error instanceof Error ? error.message : 'Terjadi kesalahan. Silakan coba lagi.');
+    } catch (err) {
+      console.error('Payment error:', err);
+      setError(err instanceof Error ? err.message : 'Terjadi kesalahan. Silakan coba lagi.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Loading / placeholder saat data belum ada
   if (!registrationData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -198,9 +229,10 @@ export default function PaymentPage() {
     );
   }
 
+  // Setelah guard di atas, registrationData pasti bukan null
   const totalAmount = type === 'COMMUNITY'
-    ? registrationData.community?.finalPrice
-    : registrationData.participant?.totalPrice;
+    ? (registrationData.community?.finalPrice ?? 0)
+    : (registrationData.participant?.totalPrice ?? 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -216,7 +248,7 @@ export default function PaymentPage() {
               Kembali
             </button>
             <h1 className="text-xl font-bold">Pembayaran</h1>
-            <div className="w-20"></div>
+            <div className="w-20" />
           </div>
         </div>
       </div>
@@ -270,15 +302,13 @@ export default function PaymentPage() {
                         setError('');
                       }}
                       className={`w-full p-4 flex items-center justify-between transition-colors ${selectedMethod === method.type
-                          ? 'bg-primary/5 border-primary'
-                          : 'hover:bg-gray-50'
+                        ? 'bg-primary/5 border-primary'
+                        : 'hover:bg-gray-50'
                         }`}
                     >
                       <div className="flex items-center">
-                        <div className={`p-2 rounded-lg ${selectedMethod === method.type ? 'bg-primary/10' : 'bg-gray-100'
-                          }`}>
-                          <method.icon className={`w-5 h-5 ${selectedMethod === method.type ? 'text-primary' : 'text-gray-600'
-                            }`} />
+                        <div className={`p-2 rounded-lg ${selectedMethod === method.type ? 'bg-primary/10' : 'bg-gray-100'}`}>
+                          <method.icon className={`w-5 h-5 ${selectedMethod === method.type ? 'text-primary' : 'text-gray-600'}`} />
                         </div>
                         <div className="ml-4 text-left">
                           <p className="font-semibold text-gray-900">{method.name}</p>
@@ -287,8 +317,7 @@ export default function PaymentPage() {
                           )}
                         </div>
                       </div>
-                      <ChevronRight className={`w-5 h-5 transition-transform ${selectedMethod === method.type ? 'rotate-90 text-primary' : 'text-gray-400'
-                        }`} />
+                      <ChevronRight className={`w-5 h-5 transition-transform ${selectedMethod === method.type ? 'rotate-90 text-primary' : 'text-gray-400'}`} />
                     </button>
 
                     {/* Bank/Provider Options */}
@@ -304,8 +333,8 @@ export default function PaymentPage() {
                                 setError('');
                               }}
                               className={`p-3 rounded-lg border-2 transition-all ${selectedBank === bank.code
-                                  ? 'border-primary bg-primary/5 shadow-sm'
-                                  : 'border-gray-200 hover:border-gray-300 bg-white'
+                                ? 'border-primary bg-primary/5 shadow-sm'
+                                : 'border-gray-200 hover:border-gray-300 bg-white'
                                 }`}
                             >
                               <p className="font-semibold text-sm">{bank.name}</p>
@@ -330,8 +359,8 @@ export default function PaymentPage() {
                     && !selectedBank
                   )}
                   className={`w-full py-4 rounded-lg font-semibold transition-all flex items-center justify-center ${!selectedMethod || loading || ((selectedMethod === 'bank_transfer' || selectedMethod === 'e_wallet' || selectedMethod === 'convenience_store') && !selectedBank)
-                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-primary text-white hover:bg-primary/90 shadow-lg hover:shadow-xl'
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-primary text-white hover:bg-primary/90 shadow-lg hover:shadow-xl'
                     }`}
                 >
                   {loading ? (
@@ -377,34 +406,34 @@ export default function PaymentPage() {
                       <>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Komunitas</span>
-                          <span className="font-semibold text-right">{registrationData.community.communityName}</span>
+                          <span className="font-semibold text-right">{registrationData.community?.communityName}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Kategori</span>
-                          <span className="font-semibold">{registrationData.community.category}</span>
+                          <span className="font-semibold">{registrationData.community?.category}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Jumlah Peserta</span>
-                          <span className="font-semibold">{registrationData.community.totalMembers} orang</span>
+                          <span className="font-semibold">{registrationData.community?.totalMembers ?? 0} orang</span>
                         </div>
                       </>
                     ) : (
                       <>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Nama Peserta</span>
-                          <span className="font-semibold text-right">{registrationData.participant.fullName}</span>
+                          <span className="font-semibold text-right">{registrationData.participant?.fullName}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Kategori</span>
-                          <span className="font-semibold">{registrationData.participant.category}</span>
+                          <span className="font-semibold">{registrationData.participant?.category}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Nomor BIB</span>
-                          <span className="font-bold text-primary">{registrationData.participant.bibNumber}</span>
+                          <span className="font-bold text-primary">{registrationData.participant?.bibNumber}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Ukuran Jersey</span>
-                          <span className="font-semibold">{registrationData.participant.jerseySize}</span>
+                          <span className="font-semibold">{registrationData.participant?.jerseySize}</span>
                         </div>
                       </>
                     )}
@@ -414,13 +443,13 @@ export default function PaymentPage() {
                   {type === 'INDIVIDUAL' && (
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Biaya Registrasi {registrationData.participant.category}</span>
-                        <span>{formatCurrency(registrationData.participant.basePrice)}</span>
+                        <span className="text-gray-600">Biaya Registrasi {registrationData.participant?.category}</span>
+                        <span>{formatCurrency(registrationData.participant?.basePrice)}</span>
                       </div>
-                      {registrationData.participant.jerseyAddOn > 0 && (
+                      {(registrationData.participant?.jerseyAddOn ?? 0) > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Jersey Size {registrationData.participant.jerseySize}</span>
-                          <span>{formatCurrency(registrationData.participant.jerseyAddOn)}</span>
+                          <span className="text-gray-600">Jersey Size {registrationData.participant?.jerseySize}</span>
+                          <span>{formatCurrency(registrationData.participant?.jerseyAddOn)}</span>
                         </div>
                       )}
                     </div>

@@ -1,8 +1,9 @@
 // app/api/admin/participants/route.ts
-import { Prisma, PrismaClient } from '@prisma/client';
+import prisma from '@/lib/prisma';
+import { WhatsAppIntegrationService } from '@/lib/services/whatsapp-integration.service';
+import { generateBibNumber } from '@/lib/utils/bib-generator';
+import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
-
-const prisma = new PrismaClient();
 
 export async function GET(request: NextRequest) {
   try {
@@ -152,14 +153,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let result;
+    let result: { success: boolean; processed: number; failed: number; errors?: string[] };
 
     switch (action) {
       case 'UPDATE_STATUS':
-        result = await prisma.participant.updateMany({
+        const updateResult = await prisma.participant.updateMany({
           where: { id: { in: participantIds } },
           data: { registrationStatus: data.status }
         });
+        result = {
+          success: true,
+          processed: updateResult.count,
+          failed: 0
+        };
         break;
 
       case 'CONFIRM_PAYMENTS':
@@ -169,46 +175,104 @@ export async function POST(request: NextRequest) {
           data: { registrationStatus: 'CONFIRMED' }
         });
 
-        // Update related payments
+        // Update related payments to SUCCESS (not PAID)
         await prisma.payment.updateMany({
           where: {
             participantId: { in: participantIds },
             status: 'PENDING'
           },
           data: {
-            status: 'PAID',
+            status: 'SUCCESS',
             paidAt: new Date()
           }
         });
 
-        result = { count: participantIds.length };
+        // Send WhatsApp notifications for each participant
+        let notificationsSent = 0;
+        for (const participantId of participantIds) {
+          const payment = await prisma.payment.findFirst({
+            where: { participantId }
+          });
+          if (payment) {
+            await WhatsAppIntegrationService.onPaymentSuccess(payment.id);
+            notificationsSent++;
+          }
+        }
+
+        result = {
+          success: true,
+          processed: participantIds.length,
+          failed: 0
+        };
         break;
 
-      case 'SEND_EMAIL':
-        // TODO: Implement bulk email sending
-        result = { message: 'Email feature not yet implemented' };
+      case 'SEND_NOTIFICATION':
+        if (!data.message) {
+          return NextResponse.json(
+            { error: 'Message is required for notification' },
+            { status: 400 }
+          );
+        }
+
+        const notificationResult = await WhatsAppIntegrationService.sendBulkNotifications(
+          participantIds,
+          data.message as string
+        );
+
+        result = {
+          success: true,
+          processed: notificationResult.success,
+          failed: notificationResult.failed
+        };
         break;
 
       case 'GENERATE_QR':
         // Generate QR codes for race packs
-        const racePacks = await Promise.all(
-          participantIds.map(async (participantId: string) => {
+        let generated = 0;
+        let failed = 0;
+        const errors: string[] = [];
+
+        for (const participantId of participantIds) {
+          try {
             const existing = await prisma.racePack.findUnique({
               where: { participantId }
             });
 
             if (!existing) {
-              return prisma.racePack.create({
-                data: {
-                  participantId,
-                  qrCode: `QR_${participantId}_${Date.now()}`
-                }
+              // Generate proper QR code format
+              const participant = await prisma.participant.findUnique({
+                where: { id: participantId }
               });
+
+              if (participant) {
+                const qrCode = `BM2025-${participant.category}-${participant.bibNumber || generateBibNumber(participant.category as '5K' | '10K')}-${participant.id.substring(0, 8).toUpperCase()}`;
+
+                await prisma.racePack.create({
+                  data: {
+                    participantId,
+                    qrCode
+                  }
+                });
+                generated++;
+              } else {
+                failed++;
+                errors.push(`Participant ${participantId} not found`);
+              }
+            } else {
+              generated++; // Already has QR code
             }
-            return existing;
-          })
-        );
-        result = { generated: racePacks.length };
+          } catch (err) {
+            failed++;
+            errors.push(`Failed to generate QR for ${participantId}`);
+          }
+        }
+
+        result = {
+          success: failed === 0,
+          processed: generated,
+          failed,
+          errors: errors.length > 0 ? errors : undefined
+        };
         break;
 
       default:
@@ -218,10 +282,7 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    return NextResponse.json({
-      success: true,
-      result
-    });
+    return NextResponse.json(result);
 
   } catch (error) {
     console.error('Error in bulk operation:', error);

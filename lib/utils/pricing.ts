@@ -1,97 +1,92 @@
+// lib/utils/pricing.ts
 import { JerseySize } from "@/lib/types/registration";
-import { COMMUNITY_CONSTANTS, CommunityPriceCalculation } from "../types/community-registration";
 
-// Fixed prices configuration
-const PRICES = {
-  '5K': 180000,      // Rp 180.000
-  '10K': 230000,     // Rp 230.000  
-  'COMMUNITY': 151000 // Rp 151.000 per person
-};
-
-// Jersey sizes that incur additional cost
-const PLUS_SIZE_JERSEY = ['XXL', 'XXXL'];
-const JERSEY_ADDON_PRICE = 20000; // Rp 20.000
-
-// Calculate total price for individual registration
-export function calculateRegistrationPrice(
-  category: string,
-  jerseySize: string
-): {
+// ---------- TYPES ----------
+export interface CommunityPriceCalculation {
   basePrice: number;
-  jerseyAddOn: number;
+  baseMembers: number;
+  freeMembers: number;
+  totalMembers: number;
+  pricePerPerson: number;
+  subtotal: number;
+  jerseyAddOnTotal: number;
+  jerseyAdjustments: { memberName: string; size: JerseySize; adjustment: number }[];
+  totalJerseyAdjustment: number;
+  totalBase: number;
   totalPrice: number;
-} {
-  // Get base price
-  const basePrice = PRICES[category as keyof typeof PRICES] || 0;
-
-  // Calculate jersey add-on (only for XXL and XXXL)
-  const jerseyAddOn = PLUS_SIZE_JERSEY.includes(jerseySize) ? JERSEY_ADDON_PRICE : 0;
-
-  // Calculate total
-  const totalPrice = basePrice + jerseyAddOn;
-
-  return {
-    basePrice,
-    jerseyAddOn,
-    totalPrice
-  };
+  savings: number;
 }
 
-// Calculate price for community registration
-export function calculateCommunityPrice(
-p0: string, members: { fullName: string; jerseySize: JerseySize; }[]): CommunityPriceCalculation {
-  const participantCount = members.length;
+// ---------- CONSTANTS ----------
+const PRICES = {
+  '5K': 180000,
+  '10K': 230000,
+  'COMMUNITY': 151000
+};
 
-  if (participantCount < COMMUNITY_CONSTANTS.MIN_MEMBERS) {
+const PLUS_SIZE_JERSEY = ['XL', 'XXL', 'XXXL'];
+const JERSEY_ADDON_PRICE = 20000;
+
+const COMMUNITY_CONSTANTS = {
+  MIN_MEMBERS: 5,
+  PROMO_BUY: 5,
+  PROMO_GET: 1,
+  PRICE_PER_PERSON: PRICES.COMMUNITY
+};
+
+// ---------- INDIVIDUAL PRICE CALCULATION ----------
+export function calculateRegistrationPrice(
+  category: string,
+  jerseySize: JerseySize
+): { basePrice: number; jerseyAddOn: number; totalPrice: number } {
+  const basePrice = PRICES[category as keyof typeof PRICES] || 0;
+  const jerseyAddOn = PLUS_SIZE_JERSEY.includes(jerseySize) ? JERSEY_ADDON_PRICE : 0;
+  const totalPrice = basePrice + jerseyAddOn;
+  return { basePrice, jerseyAddOn, totalPrice };
+}
+
+// ---------- COMMUNITY PRICE CALCULATION ----------
+export function calculateCommunityPrice(
+  category: string,
+  members: { fullName: string; jerseySize: JerseySize }[]
+): CommunityPriceCalculation {
+  const totalMembers = members.length;
+
+  if (totalMembers < COMMUNITY_CONSTANTS.MIN_MEMBERS) {
     throw new Error(`Minimal ${COMMUNITY_CONSTANTS.MIN_MEMBERS} peserta untuk registrasi komunitas`);
   }
 
-  // Promo buy X get Y
-  const freeMembers = Math.floor(
-    participantCount / COMMUNITY_CONSTANTS.PROMO_BUY
-  ) * COMMUNITY_CONSTANTS.PROMO_GET;
-
-  const baseMembers = participantCount - freeMembers;
+  const freeMembers = Math.floor(totalMembers / COMMUNITY_CONSTANTS.PROMO_BUY) * COMMUNITY_CONSTANTS.PROMO_GET;
+  const baseMembers = totalMembers - freeMembers;
   const pricePerPerson = COMMUNITY_CONSTANTS.PRICE_PER_PERSON;
   const subtotal = baseMembers * pricePerPerson;
 
-  // Hitung penyesuaian jersey (contoh: XL/XXL ada tambahan harga)
-  const jerseyAdjustments = members.map((m) => {
-    let adjustment = 0;
-    if (m.jerseySize === "XL" || m.jerseySize === "XXL") {
-      adjustment = JERSEY_ADDON_PRICE;
-    }
-    return {
-      memberName: m.fullName,
-      size: m.jerseySize,
-      adjustment,
-    };
-  });
+  const jerseyAdjustments = members.map((m) => ({
+    memberName: m.fullName,
+    size: m.jerseySize,
+    adjustment: PLUS_SIZE_JERSEY.includes(m.jerseySize) ? JERSEY_ADDON_PRICE : 0
+  }));
 
-  const totalJerseyAdjustment = jerseyAdjustments.reduce(
-    (sum, j) => sum + j.adjustment,
-    0
-  );
-
+  const totalJerseyAdjustment = jerseyAdjustments.reduce((sum, j) => sum + j.adjustment, 0);
   const totalPrice = subtotal + totalJerseyAdjustment;
 
   return {
-    basePrice: 0,
-    baseMembers: 0,
-    freeMembers: 0,
-    totalMembers: 0,
-    pricePerPerson: 0,
-    subtotal: 0,
-    jerseyAddOnTotal: 0,
-    jerseyAdjustments: [],
-    totalJerseyAdjustment: 0,
-    totalBase: 0,
-    totalPrice: 0,
-    savings: 0
+    basePrice: subtotal,
+    baseMembers,
+    freeMembers,
+    totalMembers,
+    pricePerPerson,
+    subtotal,
+    jerseyAddOnTotal: totalJerseyAdjustment,
+    jerseyAdjustments,
+    totalJerseyAdjustment,
+    totalBase: subtotal,
+    totalPrice,
+    savings: freeMembers * pricePerPerson
   };
 }
 
-// Format currency for display
+// ---------- FORMAT CURRENCY ----------
 export function formatRupiah(amount: number): string {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -101,21 +96,14 @@ export function formatRupiah(amount: number): string {
   }).format(amount);
 }
 
-// Get price breakdown for display
-export function getPriceBreakdown(
-  category: string,
-  jerseySize: string
-): string[] {
+// ---------- DISPLAY PRICE BREAKDOWN ----------
+export function getPriceBreakdown(category: string, jerseySize: JerseySize): string[] {
   const { basePrice, jerseyAddOn, totalPrice } = calculateRegistrationPrice(category, jerseySize);
 
-  const breakdown = [
-    `Registrasi ${category}: ${formatRupiah(basePrice)}`
-  ];
-
+  const breakdown = [`Registrasi ${category}: ${formatRupiah(basePrice)}`];
   if (jerseyAddOn > 0) {
     breakdown.push(`Jersey ukuran ${jerseySize}: +${formatRupiah(jerseyAddOn)}`);
   }
-
   breakdown.push(`Total: ${formatRupiah(totalPrice)}`);
 
   return breakdown;

@@ -1,18 +1,16 @@
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { AuthService } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-
-const prisma = new PrismaClient();
-const JWT_SECRET = process.env.NEXTAUTH_SECRET || 'your-secret-key-change-this';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json();
+    const body = await request.json();
+    const { email, password } = body;
 
     if (!email || !password) {
       return NextResponse.json(
-        { error: 'Email dan password harus diisi' },
+        { error: 'Email and password are required' },
         { status: 400 }
       );
     }
@@ -24,27 +22,30 @@ export async function POST(request: NextRequest) {
 
     if (!admin || !admin.isActive) {
       return NextResponse.json(
-        { error: 'Email atau password salah' },
+        { error: 'Invalid credentials' },
         { status: 401 }
       );
     }
 
     // Verify password
-    const isValid = await bcrypt.compare(password, admin.password);
+    const isValidPassword = await AuthService.verifyPassword(password, admin.password);
 
-    if (!isValid) {
+    if (!isValidPassword) {
       return NextResponse.json(
-        { error: 'Email atau password salah' },
+        { error: 'Invalid credentials' },
         { status: 401 }
       );
     }
 
     // Generate token
-    const token = jwt.sign(
-      { id: admin.id, email: admin.email, role: admin.role },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = await AuthService.generateToken({
+      id: admin.id,
+      email: admin.email,
+      name: admin.name,
+      role: admin.role as 'ADMIN' | 'SUPER_ADMIN' | 'VIEWER',
+      isActive: admin.isActive,
+      lastLogin: admin.lastLogin ? admin.lastLogin.toISOString() : null
+    });
 
     // Update last login
     await prisma.admin.update({
@@ -52,17 +53,31 @@ export async function POST(request: NextRequest) {
       data: { lastLogin: new Date() }
     });
 
-    // Create log
+    // Log the login
     await prisma.adminLog.create({
       data: {
         adminId: admin.id,
         action: 'LOGIN',
-        ipAddress: request.headers.get('x-forwarded-for') || ''
+        details: {
+          timestamp: new Date().toISOString(),
+          ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown'
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
+        userAgent: request.headers.get('user-agent') || null
       }
     });
 
     // Set cookie
-    const response = NextResponse.json({
+    const cookieStore = await cookies();
+    cookieStore.set('admin-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24, // 24 hours
+      path: '/'
+    });
+
+    return NextResponse.json({
       success: true,
       user: {
         id: admin.id,
@@ -72,19 +87,10 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    response.cookies.set('admin-token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 // 24 hours
-    });
-
-    return response;
-
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(
-      { error: 'Terjadi kesalahan saat login' },
+      { error: 'Login failed' },
       { status: 500 }
     );
   }

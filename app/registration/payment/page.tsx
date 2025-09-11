@@ -72,7 +72,7 @@ export default function PaymentPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
-  const [registrationData, setRegistrationData] = useState<any>(null);
+  const [registrationData, setRegistrationData] = useState< any >(null);
   const [selectedMethod, setSelectedMethod] = useState<string>('');
   const [selectedBank, setSelectedBank] = useState<string>('');
   const [timeLeft, setTimeLeft] = useState(86400); // 24 hours

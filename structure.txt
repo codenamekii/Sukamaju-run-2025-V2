@@ -159,8 +159,8 @@ lib
   │  ├─ qrcode.service.ts
   │  ├─ registration.service.ts
   │  ├─ report.services.ts
+  │  ├─ whatsapp-integration.service.ts
   │  ├─ whatsapp-notification.services.ts
-  │  ├─ whatsapp.service.dev.ts
   │  └─ whatsapp.service.ts
   ├─ types
   │  ├─ community-registration.ts
@@ -168,6 +168,7 @@ lib
   │  ├─ midtrans.ts
   │  └─ registration.ts
   ├─ utils
+  │  ├─ bib-generator.ts
   │  ├─ cn.ts
   │  ├─ community-registration.ts
   │  ├─ format.ts
@@ -188,6 +189,7 @@ public
   ├─ file.svg
   ├─ globe.svg
   ├─ images
+  │  └─ sizechart.png
   ├─ next.svg
   ├─ vercel.svg
   └─ window.svg
@@ -196,5 +198,6 @@ scripts
   ├─ cleanup.ts
   ├─ migrate-whatsapp-format.ts
   ├─ seed.ts
-  └─ test-payment.ts
+  ├─ test-payment.ts
+  └─ test-whatsapp.ts
 

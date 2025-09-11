@@ -4,38 +4,32 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import midtransClient from 'midtrans-client';
 import { NextRequest, NextResponse } from 'next/server';
 
-// 🔹 PrismaClient singleton
-const globalForPrisma = global as unknown as { prisma?: PrismaClient };
-export const prisma =
-  globalForPrisma.prisma ?? new PrismaClient({ log: ['query', 'error', 'warn'] });
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+const prisma = new PrismaClient();
 
-// 🔹 Midtrans Snap
 const snap = new midtransClient.Snap({
   isProduction: process.env.MIDTRANS_IS_PRODUCTION === 'true',
   serverKey: process.env.MIDTRANS_SERVER_KEY || '',
   clientKey: process.env.MIDTRANS_CLIENT_KEY || ''
 });
 
-// 🔹 Types
 interface MidtransItem {
   id: string;
   price: number;
   quantity: number;
   name: string;
-  category: string;
-  merchant_name: string;
+  category?: string;
+  merchant_name?: string;
 }
 
 interface MidtransCustomer {
   first_name: string;
   email: string;
   phone: string;
-  billing_address: {
+  billing_address?: {
     first_name: string;
     email: string;
     phone: string;
-    address: string | null;
+    address?: string | null;
     city?: string | null;
     postal_code?: string;
   };
@@ -44,11 +38,11 @@ interface MidtransCustomer {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { participantId, communityRegistrationId, amount, registrationCode } = body;
+    const { registrationCode, amount } = body;
 
-    if (!participantId && !communityRegistrationId) {
+    if (!registrationCode) {
       return NextResponse.json(
-        { error: 'Either participantId or communityRegistrationId is required' },
+        { error: 'Registration code is required' },
         { status: 400 }
       );
     }
@@ -56,60 +50,79 @@ export async function POST(request: NextRequest) {
     let customerDetails: MidtransCustomer;
     const itemDetails: MidtransItem[] = [];
     let orderId: string;
+    let registrationType: 'INDIVIDUAL' | 'COMMUNITY';
+    let calculatedAmount: number;
+    let finalParticipantId: string | null = null;
+    let finalCommunityId: string | null = null;
 
-    if (communityRegistrationId) {
-      const community = await prisma.communityRegistration.findUnique({
-        where: { id: communityRegistrationId },
-        include: { members: { include: { participant: true } } }
-      });
-
-      if (!community) {
-        return NextResponse.json({ error: 'Community registration not found' }, { status: 404 });
+    // First, check if it's a community registration
+    const communityReg = await prisma.communityRegistration.findUnique({
+      where: { registrationCode },
+      include: {
+        members: {
+          include: { participant: true }
+        }
       }
+    });
 
-      orderId = `COM-${Date.now()}-${community.registrationCode}`;
+    if (communityReg) {
+      // It's a community registration
+      registrationType = 'COMMUNITY';
+      orderId = `COM-${Date.now()}-${communityReg.registrationCode}`;
+      finalCommunityId = communityReg.id;
 
       customerDetails = {
-        first_name: community.picName,
-        email: community.picEmail,
-        phone: community.picWhatsapp,
+        first_name: communityReg.picName,
+        email: communityReg.picEmail,
+        phone: communityReg.picWhatsapp,
         billing_address: {
-          first_name: community.picName,
-          email: community.picEmail,
-          phone: community.picWhatsapp,
-          address: community.communityAddress
+          first_name: communityReg.picName,
+          email: communityReg.picEmail,
+          phone: communityReg.picWhatsapp,
+          address: communityReg.communityAddress
         }
       };
 
+      const pricePerPerson = Math.floor(communityReg.totalBasePrice / communityReg.totalMembers);
+
       itemDetails.push({
-        id: community.registrationCode,
-        price: Math.floor(community.totalBasePrice / community.totalMembers),
-        quantity: community.totalMembers,
-        name: `Sukamaju Run 2025 - ${community.category} (Community)`,
+        id: communityReg.registrationCode,
+        price: pricePerPerson,
+        quantity: communityReg.totalMembers,
+        name: `Sukamaju Run 2025 - ${communityReg.category} (Community)`,
         category: 'Registration',
         merchant_name: 'Sukamaju Run'
       });
 
-      if (community.jerseyAddOn > 0) {
+      if (communityReg.jerseyAddOn > 0) {
         itemDetails.push({
-          id: `JERSEY-${community.registrationCode}`,
-          price: community.jerseyAddOn,
+          id: `JERSEY-${communityReg.registrationCode}`,
+          price: communityReg.jerseyAddOn,
           quantity: 1,
           name: 'Jersey Size XXL/XXXL Addon',
           category: 'Addon',
           merchant_name: 'Sukamaju Run'
         });
       }
-    } else if (participantId) {
-      const participant = await prisma.participant.findUnique({
-        where: { id: participantId }
+
+      calculatedAmount = communityReg.finalPrice;
+
+    } else {
+      // Check for individual registration
+      const participant = await prisma.participant.findFirst({
+        where: { registrationCode }
       });
 
       if (!participant) {
-        return NextResponse.json({ error: 'Participant not found' }, { status: 404 });
+        return NextResponse.json(
+          { error: 'Registration not found' },
+          { status: 404 }
+        );
       }
 
+      registrationType = 'INDIVIDUAL';
       orderId = `IND-${Date.now()}-${participant.registrationCode}`;
+      finalParticipantId = participant.id;
 
       customerDetails = {
         first_name: participant.fullName,
@@ -144,27 +157,22 @@ export async function POST(request: NextRequest) {
           merchant_name: 'Sukamaju Run'
         });
       }
-    } else {
-      return NextResponse.json(
-        { error: 'Invalid request, missing IDs' },
-        { status: 400 }
-      );
+
+      calculatedAmount = participant.totalPrice;
     }
 
-    // 🔹 Hitung ulang gross_amount
-    const calculatedAmount = itemDetails.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-
-    if (amount !== calculatedAmount) {
-      return NextResponse.json(
-        { error: 'Amount mismatch', expected: calculatedAmount, received: amount },
-        { status: 400 }
-      );
+    // Verify amount if provided
+    if (amount && amount !== calculatedAmount) {
+      console.warn(`Amount mismatch: provided ${amount}, calculated ${calculatedAmount}`);
     }
 
-    // 🔹 Midtrans transaction
+    // Build callback URLs
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const successUrl = `${baseUrl}/registration/success?code=${registrationCode}&type=${registrationType}`;
+    const pendingUrl = `${baseUrl}/registration/payment?code=${registrationCode}&type=${registrationType}&status=pending`;
+    const errorUrl = `${baseUrl}/registration/payment?code=${registrationCode}&type=${registrationType}&status=error`;
+
+    // Midtrans transaction parameters
     const parameter = {
       transaction_details: {
         order_id: orderId,
@@ -172,30 +180,45 @@ export async function POST(request: NextRequest) {
       },
       customer_details: customerDetails,
       item_details: itemDetails,
-      credit_card: { secure: true },
-      expiry: { unit: 'hours', duration: 24 },
-      custom_field1: participantId || communityRegistrationId,
-      custom_field2: participantId ? 'INDIVIDUAL' : 'COMMUNITY',
-      custom_field3: registrationCode
+      credit_card: {
+        secure: true
+      },
+      expiry: {
+        unit: 'hours',
+        duration: 24
+      },
+      callbacks: {
+        finish: successUrl
+      },
+      custom_field1: registrationCode,
+      custom_field2: registrationType,
+      custom_field3: ''
     };
+
+    console.log('Creating Midtrans transaction:', {
+      orderId,
+      amount: calculatedAmount,
+      type: registrationType,
+      successUrl
+    });
 
     const transaction = await snap.createTransaction(parameter);
 
-    // 🔹 Update or create payment record
-    const payment = await prisma.payment.findFirst({
+    // Update or create payment record
+    const existingPayment = await prisma.payment.findFirst({
       where: {
         OR: [
-          ...(participantId ? [{ participantId }] : []),
-          ...(communityRegistrationId ? [{ communityRegistrationId }] : [])
+          ...(finalParticipantId ? [{ participantId: finalParticipantId }] : []),
+          ...(finalCommunityId ? [{ communityRegistrationId: finalCommunityId }] : [])
         ],
         status: 'PENDING'
       },
       orderBy: { createdAt: 'desc' }
     });
 
-    if (payment) {
+    if (existingPayment) {
       await prisma.payment.update({
-        where: { id: payment.id },
+        where: { id: existingPayment.id },
         data: {
           midtransOrderId: orderId,
           midtransToken: transaction.token,
@@ -210,8 +233,10 @@ export async function POST(request: NextRequest) {
           midtransOrderId: orderId,
           midtransToken: transaction.token,
           midtransResponse: transaction as Prisma.JsonObject,
-          participantId,
-          communityRegistrationId
+          paymentCode: orderId,
+          participantId: finalParticipantId,
+          communityRegistrationId: finalCommunityId,
+          expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
         }
       });
     }
@@ -222,8 +247,9 @@ export async function POST(request: NextRequest) {
       redirect_url: transaction.redirect_url,
       order_id: orderId
     });
+
   } catch (error) {
-    console.error('❌ Payment creation error:', error);
+    console.error('Payment creation error:', error);
     return NextResponse.json(
       {
         error: 'Failed to create payment',

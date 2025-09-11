@@ -1,9 +1,9 @@
 // app/api/admin/auth/check/route.ts
 import { AuthService } from '@/lib/auth';
 import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const cookieStore = cookies();
     const token = (await cookieStore).get('admin-token');
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const admin = AuthService.verifyToken(token.value);
+    const admin = await AuthService.verifyToken(token.value);
 
     if (!admin) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
+    console.error('Auth check error:', error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
 }

@@ -1,4 +1,6 @@
 import { WhatsAppService } from '@/lib/services/whatsapp.service';
+import { JerseySize } from '@/lib/types/registration';
+import { generateBibNumber } from '@/lib/utils/bib-generator';
 import { calculateRegistrationPrice } from '@/lib/utils/pricing';
 import { formatWhatsAppNumber, validateWhatsAppNumber } from '@/lib/utils/whatsapp-formatter';
 import { PrismaClient } from '@prisma/client';
@@ -20,7 +22,7 @@ interface RegistrationBody {
   postalCode?: string;
   category: '5K' | '10K';
   bibName: string | null;
-  jerseySize: string;
+  jerseySize: JerseySize;
   estimatedTime?: string;
   emergencyName: string;
   emergencyPhone: string;
@@ -30,11 +32,6 @@ interface RegistrationBody {
   medications?: string;
 }
 
-async function generateBibNumber(category: '5K' | '10K'): Promise<string> {
-  const count = await prisma.participant.count({ where: { category } });
-  const prefix = category === '5K' ? '5' : '10';
-  return `${prefix}${(count + 1).toString().padStart(3, '0')}`;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -225,7 +222,7 @@ export async function POST(request: NextRequest) {
       if (reminderTime > now) {
         setTimeout(async () => {
           try {
-            await WhatsAppService.sendPaymentReminder(result.participant.id);
+            WhatsAppService.sendPaymentReminder(result.participant.id);
           } catch (err) {
             console.error('Reminder WA error:', err);
           }

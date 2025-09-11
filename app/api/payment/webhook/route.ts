@@ -1,9 +1,8 @@
+// app/api/payment/webhook/route.ts
+import { WhatsAppIntegrationService } from '@/lib/services/whatsapp-integration.service';
 import { Prisma, PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-
-// ✅ tambahkan import WhatsAppService
-import { WhatsAppService } from '@/lib/services/whatsapp.service';
 
 const prisma = new PrismaClient();
 
@@ -67,7 +66,10 @@ export async function POST(request: NextRequest) {
 
     const payment = await prisma.payment.findUnique({
       where: { midtransOrderId: notification.order_id },
-      include: { participant: true },
+      include: {
+        participant: true,
+        communityRegistration: true
+      },
     });
 
     if (!payment) {
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Tentukan status
+    // Determine payment status
     const transactionStatus = notification.transaction_status;
     const fraudStatus = notification.fraud_status;
 
@@ -117,31 +119,27 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Update participant
-    if (payment.participantId) {
-      await prisma.participant.update({
-        where: { id: payment.participantId },
-        data: { registrationStatus },
-      });
-    }
-
-    // ✅ Tambahkan WhatsApp notifikasi kalau sudah dibayar
+    // Handle payment success
     if (paymentStatus === 'PAID') {
-      console.log('📱 Payment confirmed! Sending WhatsApp notification...');
+      console.log('💳 Payment confirmed! Processing notifications...');
 
       try {
-        if (process.env.NODE_ENV === 'production') {
-          await WhatsAppService.sendCommunityPaymentSuccessNotification(payment.id);
-          console.log('✅ WhatsApp payment success notification sent');
-        } else {
-          console.log('[DEV MODE] Simulasi kirim WA payment success →', payment.participant?.whatsapp);
-        }
+        // Use the integration service to handle notifications
+        await WhatsAppIntegrationService.handlePaymentWebhook(
+          notification.order_id,
+          transactionStatus
+        );
+
+        console.log('✅ Payment success notifications sent');
       } catch (waError) {
         console.error('❌ Failed to send WhatsApp notification:', waError);
       }
     }
 
-    return NextResponse.json({ status: 'ok', message: 'Webhook processed successfully' }, { status: 200, headers });
+    return NextResponse.json(
+      { status: 'ok', message: 'Webhook processed successfully' },
+      { status: 200, headers }
+    );
   } catch (error) {
     console.error('❌ Webhook processing error:', error);
     return NextResponse.json(

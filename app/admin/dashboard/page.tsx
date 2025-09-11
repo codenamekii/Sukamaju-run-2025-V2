@@ -1,11 +1,15 @@
+// app/admin/dashboard/page.tsx
 "use client";
 
 import {
   Activity,
   CheckCircle,
+  Clock,
   CreditCard,
   Download,
   RefreshCw,
+  TrendingDown,
+  TrendingUp,
   Users
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -24,8 +28,51 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { DashboardStatsSection } from "./components/stats";
-import { Activity as ActivityType, DashboardStats } from "./components/types";
+import { Activity as ActivityType, StatsResponse } from "./types";
+
+// Stats Card Component
+function StatCard({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+  trend,
+  color
+}: {
+  title: string;
+  value: string | number;
+  subtitle: string;
+  icon: React.ElementType;
+  trend?: { value: number; isUp: boolean };
+  color: 'blue' | 'green' | 'yellow' | 'purple';
+}) {
+  const colorClasses = {
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-green-50 text-green-600',
+    yellow: 'bg-yellow-50 text-yellow-600',
+    purple: 'bg-purple-50 text-purple-600'
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className={`p-3 rounded-lg ${colorClasses[color]}`}>
+          <Icon className="w-6 h-6" />
+        </div>
+        {trend && (
+          <div className={`flex items-center gap-1 text-sm ${trend.isUp ? 'text-green-600' : 'text-red-600'}`}>
+            {trend.isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+            <span>{Math.abs(trend.value)}%</span>
+          </div>
+        )}
+      </div>
+      <div>
+        <p className="text-2xl font-bold text-gray-900">{value}</p>
+        <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
 
 // Recent Activities Component
 function RecentActivities({ activities }: { activities: ActivityType[] }) {
@@ -59,105 +106,44 @@ function RecentActivities({ activities }: { activities: ActivityType[] }) {
     <div className="bg-white rounded-xl shadow-sm p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-gray-900">Recent Activities</h3>
-        <button className="text-sm text-blue-600 hover:text-blue-700">
+        <button
+          onClick={() => window.location.href = '/admin/dashboard/participants'}
+          className="text-sm text-blue-600 hover:text-blue-700"
+        >
           View all
         </button>
       </div>
-      <div className="space-y-3">
-        {activities.map((activity) => {
-          const Icon = getActivityIcon(activity.type);
-          return (
-            <div key={activity.id} className="flex items-start gap-3">
-              <div
-                className={`p-2 rounded-lg ${getStatusColor(activity.status)}`}
-              >
-                <Icon className="w-4 h-4" />
+      {activities.length > 0 ? (
+        <div className="space-y-3">
+          {activities.map((activity) => {
+            const Icon = getActivityIcon(activity.type);
+            return (
+              <div key={activity.id} className="flex items-start gap-3">
+                <div className={`p-2 rounded-lg ${getStatusColor(activity.status)}`}>
+                  <Icon className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">
+                    {activity.description}
+                  </p>
+                  <p className="text-xs text-gray-500">{activity.timestamp}</p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900">
-                  {activity.description}
-                </p>
-                <p className="text-xs text-gray-500">{activity.timestamp}</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-500">No recent activities</p>
+      )}
     </div>
   );
 }
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Mock data untuk demo
-  const mockStats: DashboardStats = {
-    totalParticipants: 342,
-    confirmedParticipants: 298,
-    pendingPayments: 44,
-    totalRevenue: 68400000,
-    todayRegistrations: 12,
-    weeklyGrowth: 15.3,
-    categoryBreakdown: {
-      "5K": 180,
-      "10K": 120,
-      COMMUNITY: 42
-    },
-    recentActivities: [
-      {
-        id: "1",
-        type: "registration",
-        description: "New registration: John Doe (5K)",
-        timestamp: "2 minutes ago",
-        status: "success"
-      },
-      {
-        id: "2",
-        type: "payment",
-        description: "Payment confirmed: Jane Smith",
-        timestamp: "15 minutes ago",
-        status: "success"
-      },
-      {
-        id: "3",
-        type: "registration",
-        description: "Community registration: Jakarta Runners",
-        timestamp: "1 hour ago",
-        status: "pending"
-      },
-      {
-        id: "4",
-        type: "check-in",
-        description: "Race pack collected: Bob Wilson",
-        timestamp: "2 hours ago",
-        status: "success"
-      },
-      {
-        id: "5",
-        type: "payment",
-        description: "Payment failed: Alice Brown",
-        timestamp: "3 hours ago",
-        status: "failed"
-      }
-    ],
-    registrationTrend: [
-      { date: "Mon", registrations: 45, payments: 42 },
-      { date: "Tue", registrations: 52, payments: 48 },
-      { date: "Wed", registrations: 38, payments: 35 },
-      { date: "Thu", registrations: 65, payments: 60 },
-      { date: "Fri", registrations: 72, payments: 68 },
-      { date: "Sat", registrations: 89, payments: 82 },
-      { date: "Sun", registrations: 56, payments: 52 }
-    ],
-    paymentStats: {
-      total: 342,
-      paid: 298,
-      pending: 32,
-      failed: 12
-    }
-  };
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -165,20 +151,21 @@ export default function AdminDashboard() {
 
   const fetchDashboardData = async () => {
     setRefreshing(true);
-    try {
-      // Use mock data for now
-      setTimeout(() => {
-        setStats(mockStats);
-        setLoading(false);
-        setRefreshing(false);
-      }, 1000);
+    setError(null);
 
-      // Real API call would be:
-      // const response = await fetch('/api/admin/analytics');
-      // const data = await response.json();
-      // setStats(data);
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error);
+    try {
+      const response = await fetch('/api/admin/stats');
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch dashboard data');
+      }
+
+      const data: StatsResponse = await response.json();
+      setStats(data);
+    } catch (err) {
+      console.error("Error fetching dashboard data:", err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
       setLoading(false);
       setRefreshing(false);
     }
@@ -195,21 +182,37 @@ export default function AdminDashboard() {
     ? [
       { name: "5K", value: stats.categoryBreakdown["5K"], color: "#3B82F6" },
       { name: "10K", value: stats.categoryBreakdown["10K"], color: "#10B981" },
-      {
-        name: "Community",
-        value: stats.categoryBreakdown["COMMUNITY"],
-        color: "#8B5CF6"
-      }
-    ]
+      { name: "Community", value: stats.categoryBreakdown["COMMUNITY"], color: "#8B5CF6" }
+    ].filter(item => item.value > 0)
     : [];
 
   const paymentChartData = stats
     ? [
-      { name: "Paid", value: stats.paymentStats.paid, color: "#10B981" },
+      { name: "Success", value: stats.paymentStats.success, color: "#10B981" },
       { name: "Pending", value: stats.paymentStats.pending, color: "#F59E0B" },
-      { name: "Failed", value: stats.paymentStats.failed, color: "#EF4444" }
-    ]
+      { name: "Failed", value: stats.paymentStats.failed, color: "#EF4444" },
+      { name: "Expired", value: stats.paymentStats.expired, color: "#6B7280" }
+    ].filter(item => item.value > 0)
     : [];
+
+  const handleExport = async () => {
+    try {
+      const response = await fetch('/api/admin/export/dashboard', {
+        method: 'GET'
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dashboard-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+        a.click();
+      }
+    } catch (err) {
+      console.error('Export failed:', err);
+    }
+  };
 
   if (loading) {
     return (
@@ -218,6 +221,30 @@ export default function AdminDashboard() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading dashboard...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">Error: {error}</p>
+          <button
+            onClick={fetchDashboardData}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-gray-600">No data available</p>
       </div>
     );
   }
@@ -231,12 +258,14 @@ export default function AdminDashboard() {
             Dashboard Overview
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Welcome back! Here&apos;s what&apos;s happening with SUKAMAJU RUN
-            2025
+            Welcome back! Here&apos;s what&apos;s happening with Sukamaju Run 2025
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-50 flex items-center gap-2"
+          >
             <Download className="w-4 h-4" />
             Export
           </button>
@@ -245,27 +274,54 @@ export default function AdminDashboard() {
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
             disabled={refreshing}
           >
-            <RefreshCw
-              className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
             Refresh
           </button>
         </div>
       </div>
 
       {/* Stats Grid */}
-      {stats && (
-        <DashboardStatsSection stats={stats} formatCurrency={formatCurrency} />
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard
+          title="Total Participants"
+          value={stats.totalParticipants}
+          subtitle={`${stats.todayRegistrations} registered today`}
+          icon={Users}
+          trend={{ value: stats.weeklyGrowth, isUp: stats.weeklyGrowth > 0 }}
+          color="blue"
+        />
+        <StatCard
+          title="Confirmed"
+          value={stats.confirmedParticipants}
+          subtitle="payments completed"
+          icon={CheckCircle}
+          color="green"
+        />
+        <StatCard
+          title="Pending"
+          value={stats.pendingPayments}
+          subtitle="awaiting payment"
+          icon={Clock}
+          color="yellow"
+        />
+        <StatCard
+          title="Total Revenue"
+          value={formatCurrency(stats.totalRevenue)}
+          subtitle="collected so far"
+          icon={CreditCard}
+          trend={{ value: stats.monthlyGrowth, isUp: stats.monthlyGrowth > 0 }}
+          color="purple"
+        />
+      </div>
 
       {/* Charts Row */}
-      {stats && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Registration Trend */}
-          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">
-              Registration Trend
-            </h3>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Registration Trend */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
+          <h3 className="font-semibold text-gray-900 mb-4">
+            Registration Trend (Last 7 Days)
+          </h3>
+          {stats.registrationTrend.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={stats.registrationTrend}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -280,6 +336,7 @@ export default function AdminDashboard() {
                   stroke="#3B82F6"
                   fill="#3B82F6"
                   fillOpacity={0.6}
+                  name="Registrations"
                 />
                 <Area
                   type="monotone"
@@ -288,16 +345,23 @@ export default function AdminDashboard() {
                   stroke="#10B981"
                   fill="#10B981"
                   fillOpacity={0.6}
+                  name="Successful Payments"
                 />
               </AreaChart>
             </ResponsiveContainer>
-          </div>
+          ) : (
+            <div className="h-[300px] flex items-center justify-center text-gray-400">
+              No data available
+            </div>
+          )}
+        </div>
 
-          {/* Category Distribution */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">
-              Category Distribution
-            </h3>
+        {/* Category Distribution */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h3 className="font-semibold text-gray-900 mb-4">
+            Category Distribution
+          </h3>
+          {pieChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -305,9 +369,7 @@ export default function AdminDashboard() {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent = 0 }) =>
-                    `${name} ${(percent * 100).toFixed(0)}%`
-                  }
+                  label={({ name, value }) => `${name}: ${value}`}
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="value"
@@ -319,21 +381,25 @@ export default function AdminDashboard() {
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
-          </div>
+          ) : (
+            <div className="h-[300px] flex items-center justify-center text-gray-400">
+              No participants yet
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Bottom Row */}
-      {stats && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Activities */}
-          <div className="lg:col-span-2">
-            <RecentActivities activities={stats.recentActivities} />
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Activities */}
+        <div className="lg:col-span-2">
+          <RecentActivities activities={stats.recentActivities} />
+        </div>
 
-          {/* Payment Status */}
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h3 className="font-semibold text-gray-900 mb-4">Payment Status</h3>
+        {/* Payment Status */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h3 className="font-semibold text-gray-900 mb-4">Payment Status</h3>
+          {paymentChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={paymentChartData} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />
@@ -347,9 +413,13 @@ export default function AdminDashboard() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          ) : (
+            <div className="h-[250px] flex items-center justify-center text-gray-400">
+              No payment data yet
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

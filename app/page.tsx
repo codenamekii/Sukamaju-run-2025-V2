@@ -196,9 +196,9 @@ export default function HomePage() {
   const targetDate = new Date("2025-11-16T06:00:00+08:00"); // 06:00 WITA
 
   const eventInfo = [
-    { icon: <Clock className="w-5 h-5" />, label: "Waktu", value: "16 Nov 2025, 06:00 WITA" },
+    { icon: <Clock className="w-5 h-5" />, label: "Race Day", value: "16 Nov 2025, 06:00 WITA" },
     { icon: <MapPin className="w-5 h-5" />, label: "Lokasi", value: "Lapangan Subiantoro, Sukamaju" },
-    { icon: <Users className="w-5 h-5" />, label: "Target Peserta", value: "500 Pelari" },
+    { icon: <Users className="w-5 h-5" />, label: "Peserta", value: "500 Runners" },
     { icon: <Trophy className="w-5 h-5" />, label: "Total Hadiah", value: "Jutaan Rupiah" },
   ];
 

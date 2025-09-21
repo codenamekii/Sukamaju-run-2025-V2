@@ -1,39 +1,29 @@
-// lib/services/whatsapp.service.ts - Using Fonnte API
 import { formatWhatsAppNumber, validateWhatsAppNumber } from '@/lib/utils/whatsapp-formatter';
-import { PrismaClient, RacePack } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-interface Participant {
-  fullName: string;
-  registrationCode: string;
-  category: string;
-  bibNumber: string;
-  totalPrice: number;
-  whatsapp: string;
-  jerseySize?: string;
+interface WhatsAppResponse {
+  status: boolean;
+  data?: Record<string, string | number | boolean>;
+  reason?: string;
+  message?: string;
 }
 
-interface PaymentData {
-  paymentCode: string;
-  amount: number;
-  vaNumber?: string;
-  bank?: string;
-  paymentUrl?: string;
-  expiredAt?: Date;
-  midtransToken?: string;
+interface BulkSendResult {
+  phone: string;
+  success: boolean;
+  result?: WhatsAppResponse;
+  error?: string;
 }
 
 export class WhatsAppService {
-  static sendPaymentReminder(paymentId?: string, participantId?: string) {
-    throw new Error('Method not implemented.');
-  }
-  // Fonnte Configuration
   private static token = process.env.FONNTE_TOKEN;
   private static domain = 'https://api.fonnte.com';
   private static isMockMode = process.env.WHATSAPP_MOCK_MODE === 'true';
 
-  static async sendMessage(phone: string, message: string) {
+  // Core send message function
+  static async sendMessage(phone: string, message: string): Promise<WhatsAppResponse> {
     try {
       const formattedPhone = formatWhatsAppNumber(phone);
 
@@ -53,11 +43,11 @@ export class WhatsAppService {
         }
       });
 
-      // Mock mode for testing (REMOVE THIS CHECK FOR PRODUCTION)
+      // Mock mode for testing
       if (this.isMockMode) {
         console.log('📱 MOCK WhatsApp Message:');
         console.log('To:', formattedPhone);
-        console.log('Message Preview:', message.substring(0, 200) + '...');
+        console.log('Message:', message.substring(0, 200) + '...');
 
         await prisma.notification.update({
           where: { id: notification.id },
@@ -79,7 +69,7 @@ export class WhatsAppService {
 
       console.log('📤 Sending WhatsApp via Fonnte to:', formattedPhone);
 
-      // Fonnte API call - REAL SEND
+      // Fonnte API call
       const response = await fetch(`${this.domain}/send`, {
         method: 'POST',
         headers: {
@@ -88,16 +78,15 @@ export class WhatsAppService {
         body: new URLSearchParams({
           target: formattedPhone,
           message: message,
-          delay: '2', // 2 seconds delay
-          countryCode: '62' // Indonesia
+          delay: '2',
+          countryCode: '62'
         })
       });
 
-      const result = await response.json();
+      const result = await response.json() as WhatsAppResponse;
       console.log('📨 Fonnte Response:', result);
 
-      // Fonnte returns different response structure
-      const isSuccess = result.status === true || result.status === 'success';
+      const isSuccess = result.status === true;
 
       await prisma.notification.update({
         where: { id: notification.id },
@@ -105,7 +94,7 @@ export class WhatsAppService {
           status: isSuccess ? 'SENT' : 'FAILED',
           sentAt: isSuccess ? new Date() : null,
           failureReason: !isSuccess ? (result.reason || result.message || 'Unknown error') : null,
-          metadata: result
+          metadata: result as unknown as Prisma.JsonObject
         }
       });
 
@@ -122,9 +111,20 @@ export class WhatsAppService {
     }
   }
 
+  // Send custom message (for communications center)
+  static async sendCustomMessage(recipient: string, message: string): Promise<boolean> {
+    try {
+      const result = await this.sendMessage(recipient, message);
+      return result.status === true;
+    } catch (error) {
+      console.error('Error sending custom message:', error);
+      return false;
+    }
+  }
+
   // Bulk send with rate limiting
-  static async sendBulkMessages(recipients: Array<{ phone: string; message: string }>) {
-    const results: Array<{ phone: string; success: boolean; result?: unknown; error?: string }> = [];
+  static async sendBulkMessages(recipients: Array<{ phone: string; message: string }>): Promise<BulkSendResult[]> {
+    const results: BulkSendResult[] = [];
 
     for (const recipient of recipients) {
       try {
@@ -135,7 +135,7 @@ export class WhatsAppService {
           result
         });
 
-        // Rate limiting - Fonnte recommends 1-2 seconds between messages
+        // Rate limiting - 2 seconds between messages
         await new Promise(resolve => setTimeout(resolve, 2000));
       } catch (error) {
         results.push({
@@ -149,11 +149,27 @@ export class WhatsAppService {
     return results;
   }
 
-  // === INDIVIDUAL REGISTRATION BEFORE PAYMENT ===
-  static async sendRegistrationConfirmation(participant: Participant, paymentData: PaymentData) {
+  // Registration confirmation
+  static async sendRegistrationConfirmation(
+    participant: {
+      fullName: string;
+      registrationCode: string;
+      category: string;
+      bibNumber: string | null;
+      totalPrice: number;
+      whatsapp: string;
+    },
+    paymentData: {
+      paymentCode: string;
+      amount: number;
+      vaNumber?: string;
+      paymentUrl?: string;
+      expiredAt?: Date;
+      midtransToken?: string;
+    }
+  ): Promise<WhatsAppResponse> {
     const formattedPhone = formatWhatsAppNumber(participant.whatsapp);
 
-    // Generate payment URL
     let paymentUrl = paymentData.paymentUrl;
     if (!paymentUrl && paymentData.midtransToken) {
       const isProduction = process.env.MIDTRANS_IS_PRODUCTION === 'true';
@@ -170,7 +186,7 @@ Halo *${participant.fullName}*!
 📋 *Detail Registrasi:*
 • Kode Registrasi: *${participant.registrationCode}*
 • Kategori: *${participant.category}*
-• Nomor BIB: *${participant.bibNumber}*
+• Nomor BIB: *${participant.bibNumber || 'TBA'}*
 
 💳 *INFORMASI PEMBAYARAN:*
 • Kode Pembayaran: *${paymentData.paymentCode}*
@@ -190,6 +206,8 @@ ${paymentUrl || 'Link akan dikirim segera'}
 
 ⚠️ *PENTING:*
 • Registrasi akan dibatalkan otomatis jika pembayaran tidak dilakukan sebelum batas waktu
+• Abaikan pesan ini jika sudah melakukan pembayaran
+
 
 Terima kasih 🙏`;
 
@@ -197,8 +215,17 @@ Terima kasih 🙏`;
     return this.sendMessage(formattedPhone, message);
   }
 
-  // === PAYMENT SUCCESS NOTIFICATION ===
-  static async sendPaymentSuccessNotification(participant: Participant & { racePack?: RacePack | null }) {
+  // Payment success notification
+  static async sendPaymentSuccessNotification(
+    participant: {
+      fullName: string;
+      registrationCode: string;
+      category: string;
+      bibNumber: string | null;
+      jerseySize: string;
+      whatsapp: string;
+    }
+  ): Promise<WhatsAppResponse> {
     const formattedPhone = formatWhatsAppNumber(participant.whatsapp);
 
     const message = `✅ *PEMBAYARAN BERHASIL!*
@@ -209,20 +236,20 @@ Selamat! Pembayaran Anda telah kami terima.
 
 🎫 *DETAIL REGISTRASI:*
 • Kode Registrasi: *${participant.registrationCode}*
-• Nomor BIB: *${participant.bibNumber}*
+• Nomor BIB: *${participant.bibNumber || 'TBA'}*
 • Kategori: *${participant.category}*
-• Ukuran Jersey: *${participant.jerseySize || 'M'}*
+• Ukuran Jersey: *${participant.jerseySize}*
 • Status: *CONFIRMED ✅*
 
 📦 *PENGAMBILAN RACE PACK:*
-• Tanggal: 15 November 2025
+• Tanggal: 10-11 Mei 2025
 • Waktu: 10:00 - 18:00 WIB
 • Lokasi: Lapangan Subiantoro, Sukamaju
 • Bawa: KTP & Bukti Registrasi ini
 
 📅 *HARI LOMBA:*
-• Minggu, 16 November 2025
-• Start: ${participant.category === '5K' ? '06:00' : '06:00'} WIB
+• Minggu, 11 Mei 2025
+• Start: 06:00 WIB
 • Lokasi: Lapangan Subiantoro, Sukamaju
 
 Good luck! 💪🏃
@@ -233,8 +260,8 @@ Terima kasih 🙏`;
     return this.sendMessage(formattedPhone, message);
   }
 
-  // === COMMUNITY REGISTRATION NOTIFICATIONS ===
-  static async sendCommunityRegistrationConfirmation(communityId: string) {
+  // Community registration confirmation
+  static async sendCommunityRegistrationConfirmation(communityId: string): Promise<WhatsAppResponse | null> {
     try {
       const community = await prisma.communityRegistration.findUnique({
         where: { id: communityId },
@@ -253,13 +280,12 @@ Terima kasih 🙏`;
 
       if (!community || !community.payments[0]) {
         console.error('Community or payment not found');
-        return;
+        return null;
       }
 
       const payment = community.payments[0];
       const formattedPhone = formatWhatsAppNumber(community.picWhatsapp);
 
-      // Generate payment URL
       let paymentUrl = '';
       if (payment.midtransToken) {
         const isProduction = process.env.MIDTRANS_IS_PRODUCTION === 'true';
@@ -280,7 +306,7 @@ Registrasi komunitas *${community.communityName}* berhasil diterima!
 
 👥 *DAFTAR PESERTA:*
 ${community.members.map((m, i) =>
-        `${i + 1}. ${m.participant.fullName} - BIB: ${m.participant.bibNumber}`
+        `${i + 1}. ${m.participant.fullName} - BIB: ${m.participant.bibNumber || 'TBA'}`
       ).join('\n')}
 
 💳 *INFORMASI PEMBAYARAN:*
@@ -299,10 +325,12 @@ Terima kasih 🙏`;
       return this.sendMessage(formattedPhone, message);
     } catch (error) {
       console.error('Community registration confirmation error:', error);
+      return null;
     }
   }
 
-  static async sendCommunityPaymentSuccessNotification(paymentId: string) {
+  // Community payment success
+  static async sendCommunityPaymentSuccessNotification(paymentId: string): Promise<boolean> {
     try {
       const payment = await prisma.payment.findUnique({
         where: { id: paymentId },
@@ -311,11 +339,7 @@ Terima kasih 🙏`;
             include: {
               members: {
                 include: {
-                  participant: {
-                    include: {
-                      racePack: true
-                    }
-                  }
+                  participant: true
                 }
               }
             }
@@ -325,13 +349,12 @@ Terima kasih 🙏`;
 
       if (!payment || !payment.communityRegistration) {
         console.error('Payment or community not found');
-        return;
+        return false;
       }
 
       const community = payment.communityRegistration;
       const picPhone = formatWhatsAppNumber(community.picWhatsapp);
 
-      // Send to PIC
       const picMessage = `✅ *PEMBAYARAN KOMUNITAS BERHASIL!*
 
 Halo *${community.picName}*,
@@ -347,11 +370,11 @@ Pembayaran komunitas *${community.communityName}* telah kami terima.
 
 👥 *DAFTAR PESERTA & BIB:*
 ${community.members.map((m, i) =>
-        `${i + 1}. ${m.participant.fullName} - BIB: ${m.participant.bibNumber}`
+        `${i + 1}. ${m.participant.fullName} - BIB: ${m.participant.bibNumber || 'TBA'}`
       ).join('\n')}
 
 📦 *PENGAMBILAN RACE PACK:*
-• Tanggal: 15 November 2025
+• Tanggal: 10-11 Mei 2025
 • Waktu: 10:00 - 18:00 WIB
 • Lokasi: Lapangan Subiantoro, Sukamaju
 • PIC dapat mengambil semua race pack komunitas
@@ -359,31 +382,9 @@ ${community.members.map((m, i) =>
 Terima kasih 🙏`;
 
       console.log('📱 Sending payment success to PIC:', picPhone);
-      await this.sendMessage(picPhone, picMessage);
+      const result = await this.sendMessage(picPhone, picMessage);
 
-      // Optional: Send to each member (be careful with rate limits)
-      // Uncomment if needed
-      /*
-      for (const member of community.members) {
-        const memberPhone = formatWhatsAppNumber(member.participant.whatsapp);
-        const memberMessage = `✅ *REGISTRASI BERHASIL!*
-        
-Halo *${member.participant.fullName}*,
-
-Anda terdaftar dalam komunitas *${community.communityName}*.
-• Nomor BIB: *${member.participant.bibNumber}*
-• Kategori: *${member.participant.category}*
-
-Info lengkap hubungi PIC: ${community.picName}
-
-Terima kasih 🙏`;
-        
-        await this.sendMessage(memberPhone, memberMessage);
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limit
-      }
-      */
-
-      return true;
+      return result.status === true;
     } catch (error) {
       console.error('Community payment success notification error:', error);
       return false;

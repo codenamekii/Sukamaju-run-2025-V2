@@ -1,4 +1,3 @@
-// app/registration/success/page.tsx
 "use client";
 
 import { CheckCircle, Download, Package, Smartphone } from 'lucide-react';
@@ -11,7 +10,7 @@ interface RegistrationData {
     id: string;
     fullName: string;
     email: string;
-    bibNumber: string;
+    bibNumber: string | null;
     category: string;
     registrationCode: string;
     jerseySize?: string;
@@ -24,27 +23,38 @@ interface RegistrationData {
 export default function RegistrationSuccessPage() {
   const searchParams = useSearchParams();
   const registrationCode = searchParams.get('code');
+  const orderId = searchParams.get('order_id');
   const [registrationData, setRegistrationData] = useState<RegistrationData | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (registrationCode) {
+    if (registrationCode || orderId) {
       fetchRegistrationData();
+    } else {
+      setLoading(false);
     }
-  }, [registrationCode]);
+  }, [registrationCode, orderId]);
 
   const fetchRegistrationData = async () => {
     try {
-      const response = await fetch(`/api/registration/ticket?code=${registrationCode}`);
+      // Build query params
+      const params = new URLSearchParams();
+      if (registrationCode) params.append('code', registrationCode);
+      if (orderId) params.append('order_id', orderId);
+
+      const response = await fetch(`/api/registration/ticket?${params}`);
+
       if (response.ok) {
         const data = await response.json();
         setRegistrationData(data);
 
         // Generate QR code
-        const qrCode = data.racePack?.qrCode || `BM2025-QR-${data.participant.id}-${Date.now().toString(36)}`;
-        generateQRCode(qrCode);
+        const qrCode = data.racePack?.qrCode || `SR2025-${data.participant.category}-${data.participant.bibNumber || 'TBA'}-${Date.now().toString(36)}`;
+        await generateQRCode(qrCode);
+      } else {
+        console.error('Failed to fetch registration data:', response.status);
       }
     } catch (error) {
       console.error('Failed to fetch registration data:', error);
@@ -126,7 +136,7 @@ export default function RegistrationSuccessPage() {
         ctx.font = '18px Arial';
         ctx.fillStyle = '#374151';
 
-        const details = [
+        const details: [string, string][] = [
           ['Name', registrationData.participant.fullName],
           ['BIB Number', registrationData.participant.bibNumber || 'To be assigned'],
           ['Category', registrationData.participant.category],
@@ -155,9 +165,9 @@ export default function RegistrationSuccessPage() {
 
         ctx.font = '16px Arial';
         ctx.fillStyle = '#374151';
-        ctx.fillText('Date: 10-11 May 2025', 80, 960);
+        ctx.fillText('Date: 1-2 November 2025', 80, 960);
         ctx.fillText('Time: 10:00 - 18:00 WIB', 80, 985);
-        ctx.fillText('Venue: Kebun Raya Bogor', 80, 1010);
+        ctx.fillText('Venue: Lapangan Subiantoro', 80, 1010);
 
         // Footer
         ctx.fillStyle = '#6B7280';
@@ -193,7 +203,8 @@ export default function RegistrationSuccessPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600">Registration data not found</p>
+          <p className="text-gray-600 mb-2">Registration data not found</p>
+          <p className="text-sm text-gray-500">Please check your registration code or contact support</p>
         </div>
       </div>
     );
@@ -206,16 +217,16 @@ export default function RegistrationSuccessPage() {
         <div className="bg-white rounded-xl shadow-lg p-8 mb-6">
           <div className="text-center mb-6">
             <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Registration Successful!</h1>
-            <p className="text-gray-600">Your registration for SUKAMAJU RUN 2025 has been confirmed</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Registrasi Berhasil</h1>
+            <p className="text-gray-600">Pendaftaran Anda untuk SUKAMAJU RUN 2025 telah dikonfirmasi</p>
           </div>
 
           {/* Participant Info */}
           <div className="border-t pt-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Participant Information</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Informasi Peserta</h2>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-gray-600">Name:</span>
+                <span className="text-gray-600">Nama:</span>
                 <span className="font-medium">{registrationData.participant.fullName}</span>
               </div>
               <div className="flex justify-between">
@@ -234,9 +245,9 @@ export default function RegistrationSuccessPage() {
           </div>
         </div>
 
-        {/* E-Ticket */}
+        {/* E-Ticket Section */}
         <div className="bg-white rounded-xl shadow-lg p-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">E-Ticket for Race Pack Collection</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">E-Ticket untuk pengambilan Race Pack</h2>
 
           {/* QR Code */}
           <div className="bg-gray-50 rounded-lg p-6 mb-6">
@@ -244,8 +255,8 @@ export default function RegistrationSuccessPage() {
               {qrDataUrl && (
                 <img src={qrDataUrl} alt="QR Code" className="mx-auto mb-4" />
               )}
-              <p className="text-sm text-gray-600 mb-2">Show this QR code at the collection counter</p>
-              <p className="text-xs text-gray-500">Screenshot or download this ticket for offline access</p>
+              <p className="text-sm text-gray-600 mb-2">Tunjukkan QR code ini di loket pengambilan</p>
+              <p className="text-xs text-gray-500">Ambil screenshot atau unduh tiket ini untuk akses offline</p>
             </div>
           </div>
 
@@ -257,16 +268,16 @@ export default function RegistrationSuccessPage() {
             </h3>
             <div className="space-y-2 text-sm">
               <div className="flex items-start gap-2">
-                <span className="text-blue-700 font-medium">Date:</span>
-                <span className="text-blue-900">10-11 May 2025</span>
+                <span className="text-blue-700 font-medium">Tanggal:</span>
+                <span className="text-blue-900">1-2 November 2025</span>
               </div>
               <div className="flex items-start gap-2">
-                <span className="text-blue-700 font-medium">Time:</span>
+                <span className="text-blue-700 font-medium">Waktu:</span>
                 <span className="text-blue-900">10:00 - 18:00 WIB</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-blue-700 font-medium">Venue:</span>
-                <span className="text-blue-900">Kebun Raya Bogor</span>
+                <span className="text-blue-900">Lapangan Subiantoro, Sukamaju</span>
               </div>
             </div>
           </div>
@@ -274,7 +285,7 @@ export default function RegistrationSuccessPage() {
           {/* Important Notes */}
           <div className="bg-yellow-50 rounded-lg p-4 mb-6">
             <p className="text-sm text-yellow-800">
-              <strong>Important:</strong> Please bring this e-ticket (printed or on your phone) and a valid ID card for verification at the collection counter.
+              <strong>Penting:</strong> Harap membawa e-tiket ini (dicetak atau di ponsel Anda) dan kartu identitas yang valid untuk verifikasi di konter pengambilan.
             </p>
           </div>
 
@@ -292,9 +303,9 @@ export default function RegistrationSuccessPage() {
                 if (navigator.share && qrDataUrl) {
                   navigator.share({
                     title: 'SUKAMAJU RUN 2025 E-Ticket',
-                    text: `My e-ticket for SUKAMAJU RUN 2025. BIB: ${registrationData.participant.bibNumber}`,
+                    text: `My e-ticket for SUKAMAJU RUN 2025. BIB: ${registrationData.participant.bibNumber || 'TBA'}`,
                     url: window.location.href
-                  });
+                  }).catch(err => console.log('Error sharing:', err));
                 }
               }}
               className="px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-2"

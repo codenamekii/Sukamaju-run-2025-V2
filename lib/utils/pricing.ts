@@ -24,7 +24,7 @@ const PRICES = {
   'COMMUNITY': 151000
 };
 
-const PLUS_SIZE_JERSEY = ['XL', 'XXL', 'XXXL'];
+const PLUS_SIZE_JERSEY = ['XXL', 'XXXL'];
 const JERSEY_ADDON_PRICE = 20000;
 
 const COMMUNITY_CONSTANTS = {

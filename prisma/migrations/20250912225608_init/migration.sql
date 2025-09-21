@@ -210,6 +210,34 @@ CREATE TABLE "public"."Notification" (
     CONSTRAINT "Notification_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "public"."idempotency_keys" (
+    "id" TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    "request_hash" TEXT NOT NULL,
+    "response" JSONB,
+    "status" TEXT NOT NULL DEFAULT 'processing',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expires_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "idempotency_keys_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public"."registration_attempts" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "category" TEXT NOT NULL,
+    "ip_address" TEXT,
+    "user_agent" TEXT,
+    "attempt_data" JSONB,
+    "success" BOOLEAN NOT NULL DEFAULT false,
+    "error_message" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "registration_attempts_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "Participant_email_key" ON "public"."Participant"("email");
 
@@ -342,6 +370,18 @@ CREATE INDEX "Notification_status_idx" ON "public"."Notification"("status");
 -- CreateIndex
 CREATE INDEX "Notification_createdAt_idx" ON "public"."Notification"("createdAt");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "idempotency_keys_key_key" ON "public"."idempotency_keys"("key");
+
+-- CreateIndex
+CREATE INDEX "idempotency_keys_expires_at_idx" ON "public"."idempotency_keys"("expires_at");
+
+-- CreateIndex
+CREATE INDEX "idempotency_keys_key_status_idx" ON "public"."idempotency_keys"("key", "status");
+
+-- CreateIndex
+CREATE INDEX "registration_attempts_email_created_at_idx" ON "public"."registration_attempts"("email", "created_at" DESC);
+
 -- AddForeignKey
 ALTER TABLE "public"."CommunityMember" ADD CONSTRAINT "CommunityMember_communityRegistrationId_fkey" FOREIGN KEY ("communityRegistrationId") REFERENCES "public"."CommunityRegistration"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -365,3 +405,6 @@ ALTER TABLE "public"."Certificate" ADD CONSTRAINT "Certificate_participantId_fke
 
 -- AddForeignKey
 ALTER TABLE "public"."AdminLog" ADD CONSTRAINT "AdminLog_adminId_fkey" FOREIGN KEY ("adminId") REFERENCES "public"."Admin"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."Notification" ADD CONSTRAINT "Notification_participantId_fkey" FOREIGN KEY ("participantId") REFERENCES "public"."Participant"("id") ON DELETE SET NULL ON UPDATE CASCADE;

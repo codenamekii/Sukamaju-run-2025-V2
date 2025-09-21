@@ -41,6 +41,7 @@ model Participant {
   registrationStatus String           @default("PENDING")
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+  metadata           Json?
   certificate        Certificate?
   checkIns           CheckIn[]
   communityMember    CommunityMember?
@@ -273,4 +274,55 @@ model RegistrationAttempt {
 
   @@index([email, createdAt(sort: Desc)])
   @@map("registration_attempts")
+}
+
+model MessageTemplate {
+  id         String             @id @default(cuid())
+  name       String
+  type       String
+  category   String
+  subject    String?
+  content    String
+  variables  Json
+  isActive   Boolean            @default(true)
+  usageCount Int                @default(0)
+  lastUsedAt DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  logs       CommunicationLog[]
+
+  @@index([type])
+  @@index([category])
+  @@index([isActive])
+}
+
+model CommunicationLog {
+  id             String           @id @default(cuid())
+  templateId     String?
+  recipientId    String?
+  recipientEmail String?
+  recipientPhone String?
+  recipientName  String?
+  messageType    String
+  category       String
+  subject        String?
+  content        String
+  status         String           @default("QUEUED")
+  sentAt         DateTime?
+  failedAt       DateTime?
+  errorMessage   String?
+  retryCount     Int              @default(0)
+  batchId        String?
+  priority       Int              @default(0)
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  template       MessageTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([recipientId])
+  @@index([status])
+  @@index([batchId])
+  @@index([createdAt])
+  @@index([messageType])
+  @@index([category])
 }

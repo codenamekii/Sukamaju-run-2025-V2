@@ -1,31 +1,82 @@
-import { prisma as prismaImport } from '@/lib/prisma';
-import { NextRequest, NextResponse as NextResponseImport } from 'next/server';
+import prisma from '@/lib/prisma';
+import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET_TICKET(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
+    const orderId = searchParams.get('order_id');
 
-    if (!code) {
-      return NextResponseImport.json(
-        { error: 'Registration code is required' },
+    if (!code && !orderId) {
+      return NextResponse.json(
+        { error: 'Registration code or order ID is required' },
         { status: 400 }
       );
     }
 
-    const participant = await prismaImport.participant.findUnique({
-      where: { registrationCode: code },
-      include: {
-        racePack: {
-          select: {
-            qrCode: true
+    // Try to find participant by multiple methods
+    let participant = null;
+
+    // Method 1: Try by registrationCode
+    if (code) {
+      participant = await prisma.participant.findUnique({
+        where: { registrationCode: code },
+        include: {
+          racePack: {
+            select: {
+              qrCode: true
+            }
           }
         }
+      });
+    }
+
+    // Method 2: If not found and we have orderId, try finding by payment
+    if (!participant && orderId) {
+      const payment = await prisma.payment.findFirst({
+        where: {
+          midtransOrderId: orderId
+        },
+        include: {
+          participant: {
+            include: {
+              racePack: {
+                select: {
+                  qrCode: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (payment?.participant) {
+        participant = payment.participant;
       }
-    });
+    }
+
+    // Method 3: Try partial match on registrationCode (for codes like DBQ337 that might be part of a longer code)
+    if (!participant && code) {
+      participant = await prisma.participant.findFirst({
+        where: {
+          OR: [
+            { registrationCode: { contains: code } },
+            { registrationCode: { endsWith: code } }
+          ]
+        },
+        include: {
+          racePack: {
+            select: {
+              qrCode: true
+            }
+          }
+        }
+      });
+    }
 
     if (!participant) {
-      return NextResponseImport.json(
+      console.log('Participant not found with:', { code, orderId });
+      return NextResponse.json(
         { error: 'Participant not found' },
         { status: 404 }
       );
@@ -34,14 +85,15 @@ export async function GET_TICKET(request: NextRequest) {
     // Generate QR code if not exists
     let qrCode = participant.racePack?.qrCode;
     if (!qrCode) {
-      qrCode = `BM2025-QR-${participant.id}-${Date.now().toString(36)}`;
+      qrCode = `SR2025-${participant.category}-${participant.bibNumber || 'TBA'}-${participant.id.substring(0, 8).toUpperCase()}`;
 
       // Create race pack record
-      await prismaImport.racePack.create({
+      await prisma.racePack.create({
         data: {
           participantId: participant.id,
           qrCode,
-          hasJersey: participant.jerseyAddOn > 0,
+          isCollected: false,
+          hasJersey: true,
           hasBib: true,
           hasGoodieBag: true,
           hasMedal: false
@@ -49,7 +101,7 @@ export async function GET_TICKET(request: NextRequest) {
       });
     }
 
-    return NextResponseImport.json({
+    return NextResponse.json({
       participant: {
         id: participant.id,
         fullName: participant.fullName,
@@ -66,7 +118,7 @@ export async function GET_TICKET(request: NextRequest) {
 
   } catch (error) {
     console.error('Error fetching ticket data:', error);
-    return NextResponseImport.json(
+    return NextResponse.json(
       { error: 'Failed to fetch ticket data' },
       { status: 500 }
     );

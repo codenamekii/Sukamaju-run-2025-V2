@@ -21,6 +21,8 @@ app
   │  │  │  ├─ stats-card.tsx
   │  │  │  ├─ stats.tsx
   │  │  │  └─ types.ts
+  │  │  ├─ import
+  │  │  │  └─ page.tsx
   │  │  ├─ layout.tsx
   │  │  ├─ page.tsx
   │  │  ├─ participants
@@ -35,8 +37,12 @@ app
   │  │  │  └─ page.tsx
   │  │  ├─ reports
   │  │  │  └─ page.tsx
-  │  │  └─ settings
+  │  │  ├─ settings
+  │  │  └─ types
+  │  │     └─ index.ts
   │  ├─ page.tsx
+  │  ├─ scanner
+  │  │  └─ page.tsx
   │  └─ templates
   │     └─ route.ts
   ├─ api
@@ -52,21 +58,40 @@ app
   │  │  │     └─ route.ts
   │  │  ├─ checkin
   │  │  │  └─ route.ts
+  │  │  ├─ communications
+  │  │  │  ├─ history
+  │  │  │  │  └─ route.ts
+  │  │  │  ├─ preview
+  │  │  │  │  └─ route.ts
+  │  │  │  ├─ send
+  │  │  │  │  └─ route.ts
+  │  │  │  ├─ stats
+  │  │  │  │  └─ route.ts
+  │  │  │  └─ test
+  │  │  │     └─ route.ts
   │  │  ├─ export
+  │  │  │  ├─ participants
+  │  │  │  │  └─ route.ts
   │  │  │  └─ route.ts
-  │  │  ├─ notifications
-  │  │  │  └─ send
+  │  │  ├─ import
+  │  │  │  ├─ parse
+  │  │  │  │  └─ route.ts
+  │  │  │  └─ participants
+  │  │  │     └─ route.ts
   │  │  ├─ participants
   │  │  │  ├─ route.ts
   │  │  │  └─ [id]
-  │  │  ├─ payment
+  │  │  │     └─ route.ts
+  │  │  ├─ payments
   │  │  │  ├─ confirm
   │  │  │  │  └─ route.ts
   │  │  │  └─ route.ts
   │  │  ├─ promotions
   │  │  │  └─ route.ts
   │  │  ├─ racepacks
-  │  │  │  └─ route.ts
+  │  │  │  ├─ route.ts
+  │  │  │  └─ stats
+  │  │  │     └─ routes.ts
   │  │  ├─ reports
   │  │  │  └─ route.ts
   │  │  ├─ stats
@@ -93,7 +118,9 @@ app
   │  │  │  └─ route.ts
   │  │  ├─ community-summary
   │  │  │  └─ route.ts
-  │  │  └─ route.ts
+  │  │  ├─ route.ts
+  │  │  └─ ticket
+  │  │     └─ route.ts
   │  ├─ sentry-example-api
   │  │  └─ route.ts
   │  └─ validate-whatsapp
@@ -156,6 +183,7 @@ lib
   ├─ midtrans.ts
   ├─ prisma.ts
   ├─ services
+  │  ├─ email.service.ts
   │  ├─ qrcode.service.ts
   │  ├─ registration.service.ts
   │  ├─ report.services.ts
@@ -166,6 +194,7 @@ lib
   │  ├─ community-registration.ts
   │  ├─ midtrans-client.d.ts
   │  ├─ midtrans.ts
+  │  ├─ payment.ts
   │  └─ registration.ts
   ├─ utils
   │  ├─ bib-generator.ts
@@ -180,7 +209,11 @@ lib
 
 prisma
   ├─ migrations
-  │  ├─ 20250903090318_init
+  │  ├─ 20250912225608_init
+  │  │  └─ migration.sql
+  │  ├─ 20250912225846_init
+  │  │  └─ migration.sql
+  │  ├─ 20250915091508_add_metadata_to_participant
   │  │  └─ migration.sql
   │  └─ migration_lock.toml
   └─ schema.prisma
@@ -196,8 +229,13 @@ public
 
 scripts
   ├─ cleanup.ts
+  ├─ debug-import.ts
+  ├─ debug-participants.ts
+  ├─ fix-imported-data.ts
   ├─ migrate-whatsapp-format.ts
   ├─ seed.ts
+  ├─ setup.ts
   ├─ test-payment.ts
-  └─ test-whatsapp.ts
+  ├─ test-whatsapp.ts
+  └─ verify-import-fixes.ts
 

@@ -1,204 +1,176 @@
 // app/api/admin/templates/route.ts
-import { PrismaClient } from '@prisma/client';
-import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { NextRequest, NextResponse } from 'next/server';
 
-const prisma = new PrismaClient();
-
-interface TemplateMetadata {
-  name?: string;
-  variables?: string[];
-  usageCount?: number;
-  lastUsed?: string | Date | null;
+interface TemplateCreateData {
+  name: string;
+  type: 'EMAIL' | 'WHATSAPP';
+  category: string;
+  subject?: string;
+  content: string;
+  variables: string[];
+  isActive: boolean;
 }
 
-// Default templates untuk seed awal
-const defaultTemplates = [
-  {
-    name: 'Registration Confirmation',
-    type: 'EMAIL',
-    category: 'REGISTRATION',
-    subject: 'Welcome to Sukamaju Run 2025 - Registration Confirmed!',
-    content: `Hi {{fullName}},
-
-Thank you for registering for Sukamaju Run 2025!
-
-Your registration details:
-- Registration Code: {{registrationCode}}
-- Category: {{category}}
-- BIB Number: {{bibNumber}}
-- Total Amount: Rp {{totalPrice}}
-
-Please complete your payment to secure your spot.
-Payment Link: {{paymentUrl}}
-
-See you at the starting line!
-
-Best regards,
-Sukamaju Run Team`,
-    variables: ['fullName', 'registrationCode', 'category', 'bibNumber', 'totalPrice', 'paymentUrl'],
-    isActive: true
-  },
-  {
-    name: 'Payment Success',
-    type: 'EMAIL',
-    category: 'PAYMENT',
-    subject: 'Payment Confirmed - Sukamaju Run 2025',
-    content: `Hi {{fullName}},
-
-Your payment has been successfully processed!
-
-Transaction Details:
-- Amount: Rp {{totalPrice}}
-- Registration Code: {{registrationCode}}
-- Payment Date: {{paymentDate}}
-
-Your spot is now secured. Don't forget to collect your race pack!
-
-Best regards,
-Sukamaju Run Team`,
-    variables: ['fullName', 'totalPrice', 'registrationCode', 'paymentDate'],
-    isActive: true
-  },
-  {
-    name: 'WhatsApp Registration',
-    type: 'WHATSAPP',
-    category: 'REGISTRATION',
-    subject: '',
-    content: `🏃 *SUKAMAJU RUN 2025* 🏃
-
-Halo {{fullName}}! 
-
-Registrasi Anda berhasil! 
-📋 Kode Registrasi: *{{registrationCode}}*
-🏃 Kategori: *{{category}}*
-🎽 Nomor BIB: *{{bibNumber}}*
-
-💳 Silakan lakukan pembayaran:
-Total: *Rp {{totalPrice}}*
-Link: {{paymentUrl}}
-
-Terima kasih! 🙏`,
-    variables: ['fullName', 'registrationCode', 'category', 'bibNumber', 'totalPrice', 'paymentUrl'],
-    isActive: true
-  },
-  {
-    name: 'Race Pack Collection Reminder',
-    type: 'WHATSAPP',
-    category: 'REMINDER',
-    subject: '',
-    content: `📦 *PENGAMBILAN RACE PACK* 📦
-
-Halo {{fullName}}!
-
-Jangan lupa ambil race pack Anda:
-📅 Tanggal: 13-14 Februari 2025
-⏰ Waktu: 10:00 - 20:00
-📍 Lokasi: Sukamaju Mall
-
-Bawa:
-✅ KTP/Identitas
-✅ Bukti Registrasi
-
-Info: 0812-3456-7890`,
-    variables: ['fullName'],
-    isActive: true
-  },
-  {
-    name: 'Event Day Reminder',
-    type: 'EMAIL',
-    category: 'REMINDER',
-    subject: 'Ready to Run? Sukamaju Run 2025 is Tomorrow!',
-    content: `Hi {{fullName}},
-
-The big day is almost here! 🏃‍♂️
-
-Event Details:
-📅 Date: {{eventDate}}
-⏰ Time: {{startTime}}
-📍 Venue: {{venue}}
-🎽 Your BIB: {{bibNumber}}
-
-Remember to bring:
-- Your BIB number
-- Comfortable running shoes
-- Water bottle
-- Positive energy!
-
-See you tomorrow!
-
-Best regards,
-Sukamaju Run Team`,
-    variables: ['fullName', 'eventDate', 'startTime', 'venue', 'bibNumber'],
-    isActive: true
-  }
-];
-
-export async function GET() {
+// GET - Fetch all templates
+export async function GET(request: NextRequest) {
   try {
-    // Check if templates exist, if not, seed them
-    const templateCount = await prisma.notification.count({
-      where: { type: { in: ['EMAIL', 'WHATSAPP'] } }
-    });
+    const searchParams = request.nextUrl.searchParams;
+    const type = searchParams.get('type');
+    const category = searchParams.get('category');
+    const isActive = searchParams.get('isActive');
 
-    let templates = [];
+    const where: Record<string, unknown> = {};
 
-    if (templateCount === 0) {
-      // Seed default templates using Notification model
-      for (const template of defaultTemplates) {
-        await prisma.notification.create({
-          data: {
-            type: template.type,
-            category: template.category,
-            subject: template.subject || null,
-            message: template.content,
-            status: template.isActive ? 'ACTIVE' : 'INACTIVE',
-            metadata: {
-              name: template.name,
-              variables: template.variables,
-              usageCount: 0
-            }
-          }
-        });
-      }
-    }
+    if (type) where.type = type;
+    if (category) where.category = category;
+    if (isActive !== null) where.isActive = isActive === 'true';
 
-    // Fetch all templates
-    const notifications = await prisma.notification.findMany({
-      where: {
-        type: { in: ['EMAIL', 'WHATSAPP'] },
-        participantId: null // Templates don't have participantId
-      },
+    const templates = await prisma.messageTemplate.findMany({
+      where,
       orderBy: { createdAt: 'desc' }
     });
 
-    // Transform to template format
-    templates = notifications.map((notif) => {
-      const metadata = notif.metadata as unknown as TemplateMetadata;
-
-      return {
-        id: notif.id,
-        name: metadata?.name || 'Unnamed Template',
-        type: notif.type,
-        category: notif.category,
-        subject: notif.subject,
-        content: notif.message,
-        variables: metadata?.variables || [],
-        isActive: notif.status === 'ACTIVE',
-        usageCount: metadata?.usageCount || 0,
-        lastUsed: metadata?.lastUsed || null,
-        createdAt: notif.createdAt,
-        updatedAt: notif.updatedAt
-      };
-    });
-
-    return NextResponse.json(
-      { success: true, data: templates },
-      { status: 200 }
-    );
-  } catch (error: unknown) {
+    return NextResponse.json({ templates });
+  } catch (error) {
     console.error('Error fetching templates:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch templates' },
+      { error: 'Failed to fetch templates' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST - Create new template
+export async function POST(request: NextRequest) {
+  try {
+    const body: TemplateCreateData = await request.json();
+
+    // Validate required fields
+    if (!body.name || !body.type || !body.category || !body.content) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Extract variables from content
+    const variableRegex = /\{\{(\w+)\}\}/g;
+    const variables = new Set<string>();
+    let match;
+
+    while ((match = variableRegex.exec(body.content)) !== null) {
+      variables.add(match[1]);
+    }
+
+    if (body.subject) {
+      while ((match = variableRegex.exec(body.subject)) !== null) {
+        variables.add(match[1]);
+      }
+    }
+
+    const template = await prisma.messageTemplate.create({
+      data: {
+        name: body.name,
+        type: body.type,
+        category: body.category,
+        subject: body.subject,
+        content: body.content,
+        variables: Array.from(variables),
+        isActive: body.isActive !== false
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      template
+    });
+  } catch (error) {
+    console.error('Error creating template:', error);
+    return NextResponse.json(
+      { error: 'Failed to create template' },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH - Update template
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, ...updateData } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Template ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Re-extract variables if content is updated
+    if (updateData.content || updateData.subject) {
+      const variableRegex = /\{\{(\w+)\}\}/g;
+      const variables = new Set<string>();
+      let match;
+
+      if (updateData.content) {
+        while ((match = variableRegex.exec(updateData.content)) !== null) {
+          variables.add(match[1]);
+        }
+      }
+
+      if (updateData.subject) {
+        while ((match = variableRegex.exec(updateData.subject)) !== null) {
+          variables.add(match[1]);
+        }
+      }
+
+      updateData.variables = Array.from(variables);
+    }
+
+    const template = await prisma.messageTemplate.update({
+      where: { id },
+      data: updateData
+    });
+
+    return NextResponse.json({
+      success: true,
+      template
+    });
+  } catch (error) {
+    console.error('Error updating template:', error);
+    return NextResponse.json(
+      { error: 'Failed to update template' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - Delete template
+export async function DELETE(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Template ID is required' },
+        { status: 400 }
+      );
+    }
+
+    await prisma.messageTemplate.delete({
+      where: { id }
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Template deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting template:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete template' },
       { status: 500 }
     );
   }

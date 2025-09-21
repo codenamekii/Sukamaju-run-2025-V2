@@ -136,6 +136,7 @@ export default function ParticipantsPage() {
     const badges = {
       'CONFIRMED': { icon: CheckCircle, class: 'bg-green-100 text-green-800' },
       'PENDING': { icon: Clock, class: 'bg-yellow-100 text-yellow-800' },
+      'IMPORTED': { icon: CheckCircle, class: 'bg-blue-100 text-blue-800' }, // ADD THIS
       'CANCELLED': { icon: XCircle, class: 'bg-red-100 text-red-800' }
     };
 
@@ -208,6 +209,7 @@ export default function ParticipantsPage() {
               <option value="">All Status</option>
               <option value="CONFIRMED">Confirmed</option>
               <option value="PENDING">Pending</option>
+              <option value="IMPORTED">Imported</option> {/* ADD THIS LINE */}
               <option value="CANCELLED">Cancelled</option>
             </select>
 

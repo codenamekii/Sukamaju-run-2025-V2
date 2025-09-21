@@ -1,20 +1,39 @@
 // app/api/admin/participants/route.ts
+// Complete optimized version - ready to copy paste
+
 import prisma from '@/lib/prisma';
 import { WhatsAppIntegrationService } from '@/lib/services/whatsapp-integration.service';
 import { generateBibNumber } from '@/lib/utils/bib-generator';
 import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Types
+interface BulkActionRequest {
+  action: 'UPDATE_STATUS' | 'CONFIRM_PAYMENTS' | 'SEND_NOTIFICATION' | 'GENERATE_QR';
+  participantIds: string[];
+  data?: {
+    status?: string;
+    message?: string;
+  };
+}
+
+interface BulkActionResult {
+  success: boolean;
+  processed: number;
+  failed: number;
+  errors?: string[];
+}
+
+// GET - Fetch participants with filters
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
 
-    // Pagination
+    // Parse parameters
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || '50');
     const skip = (page - 1) * limit;
 
-    // Filters
     const search = searchParams.get('search') || '';
     const category = searchParams.get('category') || '';
     const status = searchParams.get('status') || '';
@@ -25,28 +44,34 @@ export async function GET(request: NextRequest) {
     // Build where clause
     const where: Prisma.ParticipantWhereInput = {};
 
-    // Search filter (name, email, whatsapp, registration code)
+    // Search across multiple fields
     if (search) {
       where.OR = [
         { fullName: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
         { whatsapp: { contains: search } },
         { registrationCode: { contains: search, mode: 'insensitive' } },
-        { bibNumber: { contains: search } }
+        { bibNumber: { equals: search } },
+        { bibName: { contains: search, mode: 'insensitive' } }
       ];
     }
 
-    // Category filter
+    // Category filter (5K, 10K)
     if (category) {
       where.category = category;
     }
 
-    // Status filter
+    // Status filter - Include all active statuses if not specified
     if (status) {
       where.registrationStatus = status;
+    } else {
+      // Default: exclude cancelled participants
+      where.registrationStatus = {
+        notIn: ['CANCELLED']
+      };
     }
 
-    // Type filter
+    // Type filter (INDIVIDUAL, COMMUNITY)
     if (type) {
       where.registrationType = type;
     }
@@ -64,7 +89,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get total count for pagination
+    // Get total count
     const total = await prisma.participant.count({ where });
 
     // Fetch participants with relations
@@ -82,7 +107,10 @@ export async function GET(request: NextRequest) {
           }
         }
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { createdAt: 'desc' },
+        { fullName: 'asc' }
+      ],
       skip,
       take: limit
     });
@@ -104,11 +132,22 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Update participant
+// PATCH - Update single participant
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, ...updateData } = body;
+
+    // Extract id and remove relational fields
+    const {
+      id,
+      payments,
+      racePack,
+      checkIns,
+      certificate,
+      communityMember,
+      Notification,
+      ...updateData
+    } = body;
 
     if (!id) {
       return NextResponse.json(
@@ -117,9 +156,31 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Define valid fields that can be updated
+    const validFields = [
+      'fullName', 'gender', 'dateOfBirth', 'idNumber', 'bloodType',
+      'email', 'whatsapp', 'address', 'province', 'city', 'postalCode',
+      'category', 'bibName', 'jerseySize', 'estimatedTime',
+      'emergencyName', 'emergencyPhone', 'emergencyRelation',
+      'medicalHistory', 'allergies', 'medications',
+      'registrationCode', 'bibNumber', 'registrationType',
+      'basePrice', 'jerseyAddOn', 'totalPrice', 'isEarlyBird',
+      'registrationStatus', 'metadata'
+    ];
+
+    // Build clean update data
+    const cleanUpdateData: Prisma.ParticipantUpdateInput = {};
+
+    for (const field of validFields) {
+      if (field in updateData) {
+        (cleanUpdateData as Record<string, unknown>)[field] = updateData[field];
+      }
+    }
+
+    // Update participant
     const updated = await prisma.participant.update({
       where: { id },
-      data: updateData,
+      data: cleanUpdateData,
       include: {
         payments: true,
         racePack: true
@@ -140,12 +201,13 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// Bulk update participants
+// POST - Bulk actions
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body: BulkActionRequest = await request.json();
     const { action, participantIds, data } = body;
 
+    // Validate request
     if (!action || !participantIds || participantIds.length === 0) {
       return NextResponse.json(
         { error: 'Invalid bulk action request' },
@@ -153,29 +215,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let result: { success: boolean; processed: number; failed: number; errors?: string[] };
+    let result: BulkActionResult;
 
     switch (action) {
-      case 'UPDATE_STATUS':
+      case 'UPDATE_STATUS': {
+        if (!data?.status) {
+          return NextResponse.json(
+            { error: 'Status is required for UPDATE_STATUS action' },
+            { status: 400 }
+          );
+        }
+
         const updateResult = await prisma.participant.updateMany({
           where: { id: { in: participantIds } },
           data: { registrationStatus: data.status }
         });
+
         result = {
           success: true,
           processed: updateResult.count,
           failed: 0
         };
         break;
+      }
 
-      case 'CONFIRM_PAYMENTS':
-        // Update participants status
+      case 'CONFIRM_PAYMENTS': {
+        // Update participants status to CONFIRMED
         await prisma.participant.updateMany({
           where: { id: { in: participantIds } },
           data: { registrationStatus: 'CONFIRMED' }
         });
 
-        // Update related payments to SUCCESS (not PAID)
+        // Update related payments to SUCCESS
         await prisma.payment.updateMany({
           where: {
             participantId: { in: participantIds },
@@ -187,7 +258,7 @@ export async function POST(request: NextRequest) {
           }
         });
 
-        // Send WhatsApp notifications for each participant
+        // Send WhatsApp notifications
         let notificationsSent = 0;
         for (const participantId of participantIds) {
           const payment = await prisma.payment.findFirst({
@@ -205,18 +276,19 @@ export async function POST(request: NextRequest) {
           failed: 0
         };
         break;
+      }
 
-      case 'SEND_NOTIFICATION':
-        if (!data.message) {
+      case 'SEND_NOTIFICATION': {
+        if (!data?.message) {
           return NextResponse.json(
-            { error: 'Message is required for notification' },
+            { error: 'Message is required for SEND_NOTIFICATION action' },
             { status: 400 }
           );
         }
 
         const notificationResult = await WhatsAppIntegrationService.sendBulkNotifications(
           participantIds,
-          data.message as string
+          data.message
         );
 
         result = {
@@ -225,32 +297,41 @@ export async function POST(request: NextRequest) {
           failed: notificationResult.failed
         };
         break;
+      }
 
-      case 'GENERATE_QR':
-        // Generate QR codes for race packs
+      case 'GENERATE_QR': {
         let generated = 0;
         let failed = 0;
         const errors: string[] = [];
 
         for (const participantId of participantIds) {
           try {
+            // Check if QR already exists
             const existing = await prisma.racePack.findUnique({
               where: { participantId }
             });
 
             if (!existing) {
-              // Generate proper QR code format
+              // Get participant details
               const participant = await prisma.participant.findUnique({
                 where: { id: participantId }
               });
 
               if (participant) {
-                const qrCode = `BM2025-${participant.category}-${participant.bibNumber || generateBibNumber(participant.category as '5K' | '10K')}-${participant.id.substring(0, 8).toUpperCase()}`;
+                const categoryType = participant.category as '5K' | '10K';
+                const bibNumber = participant.bibNumber || await generateBibNumber(categoryType);
+                const qrCode = `SR2025-${participant.category}-${bibNumber}-${participant.id.substring(0, 8).toUpperCase()}`;
 
+                // Create race pack with QR code
                 await prisma.racePack.create({
                   data: {
                     participantId,
-                    qrCode
+                    qrCode,
+                    isCollected: false,
+                    hasJersey: true,
+                    hasBib: true,
+                    hasMedal: false,
+                    hasGoodieBag: true
                   }
                 });
                 generated++;
@@ -259,11 +340,12 @@ export async function POST(request: NextRequest) {
                 errors.push(`Participant ${participantId} not found`);
               }
             } else {
-              generated++; // Already has QR code
+              generated++; // Already has QR
             }
-          } catch (err) {
+          } catch (error) {
             failed++;
             errors.push(`Failed to generate QR for ${participantId}`);
+            console.error(`QR generation error for ${participantId}:`, error);
           }
         }
 
@@ -274,12 +356,14 @@ export async function POST(request: NextRequest) {
           errors: errors.length > 0 ? errors : undefined
         };
         break;
+      }
 
-      default:
+      default: {
         return NextResponse.json(
           { error: 'Unknown action' },
           { status: 400 }
         );
+      }
     }
 
     return NextResponse.json(result);

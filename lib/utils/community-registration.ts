@@ -6,7 +6,7 @@ import {
 import { JerseySize } from '@/lib/types/registration';
 import { formatCurrency } from './registration';
 
-const LARGE_JERSEY_SIZES: JerseySize[] = ['XL', 'XXL', 'XXXL'];
+const LARGE_JERSEY_SIZES: JerseySize[] = ['XXL', 'XXXL'];
 const JERSEY_PRICE_ADJUSTMENT = 20000;
 
 /**
@@ -49,16 +49,19 @@ export function calculateCommunityPrice(
   const savings = normalPrice - subtotal;
 
   return {
-    baseMembers,
-    freeMembers,
-    totalMembers,
-    pricePerPerson,
-    subtotal,
-    jerseyAdjustments,
-    totalJerseyAdjustment,
-    totalPrice,
-    savings
-  };
+  basePrice: 0,
+  baseMembers: 0,
+  freeMembers: 0,
+  totalMembers: 0,
+  subtotal: 0,
+  jerseyAdjustments: [],
+  totalJerseyAdjustment: 0,
+  jerseyAddOnTotal: 0,
+  totalBase: 0,
+  totalPrice: 0,
+  pricePerPerson: 0,
+  savings: 0
+};
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
+  Package,
   QrCode,
   RefreshCw,
   Search,
@@ -14,6 +15,27 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
+interface RacePackDetails {
+  hasJersey: boolean;
+  hasBib: boolean;
+  hasMedal: boolean;
+  hasGoodieBag: boolean;
+  collectorName: string | null;
+  collectorPhone: string | null;
+}
+
+interface Community {
+  id: string;
+  name: string;
+  totalMembers: number;
+}
+
+interface Payment {
+  status: string;
+  amount: number;
+  paidAt: string | null;
+}
+
 interface Participant {
   id: string;
   registrationCode: string;
@@ -22,19 +44,16 @@ interface Participant {
   email: string;
   phone: string;
   category: string;
+  registrationStatus: string;
   checkinStatus: 'PENDING' | 'CHECKED_IN' | 'NO_SHOW';
   checkinTime: string | null;
   checkinNotes: string | null;
   racePackCollected: boolean;
   racePackCollectedAt: string | null;
-  payment: {
-    status: string;
-    amount: number;
-  };
-  community?: {
-    name: string;
-    members: unknown[];
-  };
+  racePackQrCode: string | null;
+  racePackDetails: RacePackDetails | null;
+  payment: Payment;
+  community: Community | null;
   createdAt: string;
 }
 
@@ -73,6 +92,14 @@ export default function CheckInPage() {
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
   const [scannerActive, setScannerActive] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [showCollectorModal, setShowCollectorModal] = useState(false);
+  const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
+  const [collectorInfo, setCollectorInfo] = useState({
+    name: '',
+    phone: '',
+    relation: 'self',
+    notes: ''
+  });
 
   const fetchParticipants = useCallback(async () => {
     try {
@@ -90,9 +117,19 @@ export default function CheckInPage() {
       const data = await response.json();
 
       if (response.ok) {
-        setParticipants(data.participants);
-        setStats(data.stats);
-        setPagination(data.pagination);
+        setParticipants(data.participants || []);
+        setStats(data.stats || {
+          total: 0,
+          checkedIn: 0,
+          pending: 0,
+          noShow: 0
+        });
+        setPagination(data.pagination || {
+          page: 1,
+          limit: 10,
+          total: 0,
+          totalPages: 0
+        });
       }
     } catch (error) {
       console.error('Failed to fetch participants:', error);
@@ -105,20 +142,37 @@ export default function CheckInPage() {
     fetchParticipants();
   }, [fetchParticipants]);
 
-  const handleCheckIn = async (participantId: string, action: string) => {
+  const handleCheckIn = async (participantId: string, action: string, withCollectorInfo = false) => {
+    if (withCollectorInfo && action === 'CHECK_IN') {
+      setSelectedParticipantId(participantId);
+      setShowCollectorModal(true);
+      return;
+    }
+
     try {
       setProcessingId(participantId);
       const response = await fetch('/api/admin/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participantId, action })
+        body: JSON.stringify({
+          participantId,
+          action,
+          collectorInfo: withCollectorInfo ? collectorInfo : undefined
+        })
       });
 
       if (response.ok) {
         await fetchParticipants();
+        if (withCollectorInfo) {
+          setCollectorInfo({ name: '', phone: '', relation: 'self', notes: '' });
+        }
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Operation failed');
       }
     } catch (error) {
       console.error('Check-in error:', error);
+      alert('Failed to process request');
     } finally {
       setProcessingId(null);
     }
@@ -126,6 +180,8 @@ export default function CheckInPage() {
 
   const handleBatchCheckIn = async () => {
     if (selectedParticipants.length === 0) return;
+
+    if (!confirm(`Check in ${selectedParticipants.length} participants?`)) return;
 
     try {
       setLoading(true);
@@ -149,13 +205,21 @@ export default function CheckInPage() {
     }
   };
 
+  const confirmCollectorInfo = async () => {
+    if (!selectedParticipantId) return;
+
+    setShowCollectorModal(false);
+    await handleCheckIn(selectedParticipantId, 'CHECK_IN', true);
+    setSelectedParticipantId(null);
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'CHECKED_IN':
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
             <CheckCircle className="w-3 h-3 mr-1" />
-            Checked In
+            Collected
           </span>
         );
       case 'NO_SHOW':
@@ -173,6 +237,23 @@ export default function CheckInPage() {
           </span>
         );
     }
+  };
+
+  const getRegistrationBadge = (status: string) => {
+    const badges = {
+      'CONFIRMED': { color: 'bg-green-100 text-green-800', label: 'Confirmed' },
+      'IMPORTED': { color: 'bg-blue-100 text-blue-800', label: 'Imported' },
+      'PENDING': { color: 'bg-yellow-100 text-yellow-800', label: 'Pending' },
+      'CANCELLED': { color: 'bg-red-100 text-red-800', label: 'Cancelled' }
+    };
+
+    const badge = badges[status as keyof typeof badges] || badges.PENDING;
+
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badge.color}`}>
+        {badge.label}
+      </span>
+    );
   };
 
   const formatDateTime = (dateString: string | null) => {
@@ -197,22 +278,23 @@ export default function CheckInPage() {
         <div className="flex gap-3">
           <button
             onClick={() => setScannerActive(!scannerActive)}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             <QrCode className="w-4 h-4 mr-2" />
-            {scannerActive ? 'Close Scanner' : 'QR Scanner'}
+            QR Scanner
           </button>
           <button
-            onClick={() => window.location.reload()}
-            className="flex items-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            onClick={fetchParticipants}
+            disabled={loading}
+            className="flex items-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
         </div>
       </div>
 
-      {/* Statistics Cards */}
+      {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
@@ -230,7 +312,7 @@ export default function CheckInPage() {
               <p className="text-sm font-medium text-gray-600">Checked In</p>
               <p className="text-2xl font-semibold text-green-600 mt-1">{stats.checkedIn}</p>
               <p className="text-xs text-gray-500 mt-1">
-                {stats.total > 0 ? `${((stats.checkedIn / stats.total) * 100).toFixed(1)}%` : '0%'}
+                {stats.total > 0 ? `${((stats.checkedIn / stats.total) * 100).toFixed(0)}%` : '0%'}
               </p>
             </div>
             <UserCheck className="w-8 h-8 text-green-500" />
@@ -243,7 +325,7 @@ export default function CheckInPage() {
               <p className="text-sm font-medium text-gray-600">Pending</p>
               <p className="text-2xl font-semibold text-yellow-600 mt-1">{stats.pending}</p>
               <p className="text-xs text-gray-500 mt-1">
-                {stats.total > 0 ? `${((stats.pending / stats.total) * 100).toFixed(1)}%` : '0%'}
+                {stats.total > 0 ? `${((stats.pending / stats.total) * 100).toFixed(0)}%` : '0%'}
               </p>
             </div>
             <Clock className="w-8 h-8 text-yellow-500" />
@@ -256,7 +338,7 @@ export default function CheckInPage() {
               <p className="text-sm font-medium text-gray-600">No Show</p>
               <p className="text-2xl font-semibold text-red-600 mt-1">{stats.noShow}</p>
               <p className="text-xs text-gray-500 mt-1">
-                {stats.total > 0 ? `${((stats.noShow / stats.total) * 100).toFixed(1)}%` : '0%'}
+                {stats.total > 0 ? `${((stats.noShow / stats.total) * 100).toFixed(0)}%` : '0%'}
               </p>
             </div>
             <UserX className="w-8 h-8 text-red-500" />
@@ -264,7 +346,7 @@ export default function CheckInPage() {
         </div>
       </div>
 
-      {/* QR Scanner Section */}
+      {/* QR Scanner (placeholder) */}
       {scannerActive && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between mb-4">
@@ -278,13 +360,13 @@ export default function CheckInPage() {
           </div>
           <div className="bg-gray-100 rounded-lg p-8 text-center">
             <QrCode className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-600">QR Scanner component would be integrated here</p>
+            <p className="text-gray-600">QR Scanner will be integrated here</p>
             <p className="text-sm text-gray-500 mt-2">Scan participant QR code for quick check-in</p>
           </div>
         </div>
       )}
 
-      {/* Filters and Search */}
+      {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
@@ -293,7 +375,7 @@ export default function CheckInPage() {
               <input
                 type="text"
                 placeholder="Search by name, email, registration code, or bib number..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -307,7 +389,7 @@ export default function CheckInPage() {
           >
             <option value="all">All Status</option>
             <option value="PENDING">Pending</option>
-            <option value="CHECKED_IN">Checked In</option>
+            <option value="CHECKED_IN">Collected</option>
             <option value="NO_SHOW">No Show</option>
           </select>
 
@@ -326,14 +408,14 @@ export default function CheckInPage() {
               onClick={handleBatchCheckIn}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"
             >
-              <UserCheck className="w-4 h-4 mr-2" />
-              Check In ({selectedParticipants.length})
+              <Package className="w-4 h-4 mr-2" />
+              Collect ({selectedParticipants.length})
             </button>
           )}
         </div>
       </div>
 
-      {/* Participants Table */}
+      {/* Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -343,6 +425,7 @@ export default function CheckInPage() {
                   <input
                     type="checkbox"
                     className="rounded border-gray-300"
+                    checked={participants.length > 0 && selectedParticipants.length === participants.length}
                     onChange={(e) => {
                       if (e.target.checked) {
                         setSelectedParticipants(participants.map(p => p.id));
@@ -352,25 +435,25 @@ export default function CheckInPage() {
                     }}
                   />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Participant
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Bib / Code
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Category
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Check-in Time
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Race Pack
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">
                   Actions
                 </th>
               </tr>
@@ -379,6 +462,7 @@ export default function CheckInPage() {
               {loading ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
+                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
                     Loading participants...
                   </td>
                 </tr>
@@ -410,35 +494,66 @@ export default function CheckInPage() {
                         <div className="text-sm font-medium text-gray-900">{participant.name}</div>
                         <div className="text-sm text-gray-500">{participant.email}</div>
                         <div className="text-xs text-gray-400">{participant.phone}</div>
+                        {participant.community && (
+                          <div className="text-xs text-blue-600 mt-1">
+                            {participant.community.name}
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {participant.bibNumber || '-'}
-                        </div>
+                        {participant.bibNumber && (
+                          <div className="text-sm font-semibold text-gray-900">
+                            #{participant.bibNumber}
+                          </div>
+                        )}
                         <div className="text-xs text-gray-500">
                           {participant.registrationCode}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-gray-900">{participant.category}</span>
+                      <div>
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded ${participant.category === '10K'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-blue-100 text-blue-800'
+                          }`}>
+                          {participant.category}
+                        </span>
+                        <div className="mt-1">
+                          {getRegistrationBadge(participant.registrationStatus)}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       {getStatusBadge(participant.checkinStatus)}
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-900">
-                        {formatDateTime(participant.checkinTime)}
-                      </span>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {formatDateTime(participant.checkinTime)}
+                      {participant.racePackDetails?.collectorName && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          By: {participant.racePackDetails.collectorName}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       {participant.racePackCollected ? (
-                        <span className="text-green-600 text-sm flex items-center">
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Collected
-                        </span>
+                        <div>
+                          <span className="text-green-600 text-sm flex items-center">
+                            <Package className="w-4 h-4 mr-1" />
+                            Collected
+                          </span>
+                          {participant.racePackDetails && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {[
+                                participant.racePackDetails.hasBib && 'Bib',
+                                participant.racePackDetails.hasJersey && 'Jersey',
+                                participant.racePackDetails.hasGoodieBag && 'Goodie'
+                              ].filter(Boolean).join(', ')}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-gray-400 text-sm flex items-center">
                           <AlertCircle className="w-4 h-4 mr-1" />
@@ -446,26 +561,38 @@ export default function CheckInPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex gap-2">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2">
                         {participant.checkinStatus === 'PENDING' && (
-                          <button
-                            onClick={() => handleCheckIn(participant.id, 'CHECK_IN')}
-                            disabled={processingId === participant.id}
-                            className="text-green-600 hover:text-green-900 disabled:opacity-50"
-                          >
-                            {processingId === participant.id ? (
-                              <RefreshCw className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <UserCheck className="w-4 h-4" />
-                            )}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleCheckIn(participant.id, 'CHECK_IN', true)}
+                              disabled={processingId === participant.id}
+                              className="text-green-600 hover:text-green-800 disabled:opacity-50"
+                              title="Collect Race Pack"
+                            >
+                              {processingId === participant.id ? (
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Package className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleCheckIn(participant.id, 'MARK_NO_SHOW')}
+                              disabled={processingId === participant.id}
+                              className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                              title="Mark No Show"
+                            >
+                              <UserX className="w-4 h-4" />
+                            </button>
+                          </>
                         )}
                         {participant.checkinStatus === 'CHECKED_IN' && (
                           <button
                             onClick={() => handleCheckIn(participant.id, 'UNDO_CHECK_IN')}
                             disabled={processingId === participant.id}
-                            className="text-yellow-600 hover:text-yellow-900 disabled:opacity-50"
+                            className="text-yellow-600 hover:text-yellow-800 disabled:opacity-50"
+                            title="Undo Collection"
                           >
                             {processingId === participant.id ? (
                               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -474,17 +601,16 @@ export default function CheckInPage() {
                             )}
                           </button>
                         )}
-                        <button
-                          onClick={() => handleCheckIn(participant.id, 'MARK_NO_SHOW')}
-                          disabled={processingId === participant.id}
-                          className="text-red-600 hover:text-red-900 disabled:opacity-50"
-                        >
-                          {processingId === participant.id ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <UserX className="w-4 h-4" />
-                          )}
-                        </button>
+                        {participant.checkinStatus === 'NO_SHOW' && (
+                          <button
+                            onClick={() => handleCheckIn(participant.id, 'CHECK_IN', true)}
+                            disabled={processingId === participant.id}
+                            className="text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                            title="Check In Now"
+                          >
+                            <UserCheck className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -495,32 +621,114 @@ export default function CheckInPage() {
         </div>
 
         {/* Pagination */}
-        <div className="flex items-center justify-between p-4 border-t border-gray-200">
-          <div className="text-sm text-gray-600">
-            Page {pagination.page} of {pagination.totalPages}
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 border-t">
+            <div className="text-sm text-gray-600">
+              Page {pagination.page} of {pagination.totalPages}
+            </div>
+            <div className="flex gap-2">
+              <button
+                disabled={pagination.page === 1}
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-50"
+              >
+                Previous
+              </button>
+              <button
+                disabled={pagination.page === pagination.totalPages}
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              disabled={pagination.page === 1}
-              onClick={() =>
-                setPagination((prev) => ({ ...prev, page: prev.page - 1 }))
-              }
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              disabled={pagination.page === pagination.totalPages}
-              onClick={() =>
-                setPagination((prev) => ({ ...prev, page: prev.page + 1 }))
-              }
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
-              Next
-            </button>
+        )}
+      </div>
+
+      {/* Collector Info Modal */}
+      {showCollectorModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold mb-4">Collector Information</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Collector Name
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  value={collectorInfo.name}
+                  onChange={(e) => setCollectorInfo({ ...collectorInfo, name: e.target.value })}
+                  placeholder="Name of person collecting"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  value={collectorInfo.phone}
+                  onChange={(e) => setCollectorInfo({ ...collectorInfo, phone: e.target.value })}
+                  placeholder="Collector phone number"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Relation
+                </label>
+                <select
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  value={collectorInfo.relation}
+                  onChange={(e) => setCollectorInfo({ ...collectorInfo, relation: e.target.value })}
+                >
+                  <option value="self">Self</option>
+                  <option value="family">Family</option>
+                  <option value="friend">Friend</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notes (Optional)
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  rows={2}
+                  value={collectorInfo.notes}
+                  onChange={(e) => setCollectorInfo({ ...collectorInfo, notes: e.target.value })}
+                  placeholder="Additional notes"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCollectorModal(false);
+                  setSelectedParticipantId(null);
+                }}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmCollectorInfo}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Confirm Collection
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

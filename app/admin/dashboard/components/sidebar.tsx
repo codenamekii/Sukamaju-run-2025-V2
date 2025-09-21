@@ -13,6 +13,7 @@ import {
   QrCode,
   Settings,
   Ticket,
+  Upload,
   Users,
   X
 } from 'lucide-react';
@@ -38,6 +39,11 @@ const menuItems: MenuItem[] = [
     name: 'Participants',
     href: '/admin/dashboard/participants',
     icon: Users
+  },
+  {
+    name: 'Import',
+    href: '/admin/dashboard/import',
+    icon: Upload
   },
   {
     name: 'Registrations',

@@ -1,47 +1,54 @@
 // lib/config/pricing.ts
 // Centralized pricing configuration for SUKAMAJU RUN 2025
+// FIXED VERSION WITH CORRECT EARLY BIRD PRICING
 
 export const PRICING_CONFIG = {
   // Event dates
-  eventDate: new Date('2025-11-16'),
-  earlyBirdDeadline: new Date('2025-08-31'),
+  eventDate: new Date('2025-05-11'),
+  earlyBirdDeadline: new Date('2025-03-31'), // Adjust as needed
 
-  // Individual registration prices - FIXED PRICES (no early bird)
+  // Individual registration prices - WITH EARLY BIRD DISCOUNT
   individual: {
     '5K': {
-      earlyBird: 180000,  // Same as regular (no early bird discount)
-      regular: 180000,    // Fixed price Rp 180.000
+      earlyBird: 162000,  // Early bird price Rp 162.000 (10% discount)
+      regular: 180000,    // Regular price Rp 180.000
       description: 'Kategori 5 KM'
     },
     '10K': {
-      earlyBird: 230000,  // Same as regular (no early bird discount)
-      regular: 230000,    // Fixed price Rp 230.000
+      earlyBird: 207000,  // Early bird price Rp 207.000 (10% discount)
+      regular: 230000,    // Regular price Rp 230.000
       description: 'Kategori 10 KM'
     }
   },
 
   // Community registration
   community: {
-    basePrice: 151000,        // Per person
+    '5K': {
+      basePrice: 171000,  // Per person (5% discount from individual)
+      description: 'Komunitas 5K'
+    },
+    '10K': {
+      basePrice: 218000,  // Per person (5% discount from individual)
+      description: 'Komunitas 10K'
+    },
     minimumParticipants: 5,   // Minimum 5 orang
-    promoThreshold: 10,       // Buy 10 get 1 free
+    maximumParticipants: 50,  // Maximum 50 orang
+    promoThreshold: 10,        // Buy 10 get 1 free
     promoBonus: 1,            // Free participants
-    description: 'Registrasi Komunitas (min. 5 orang)'
   },
 
   // Jersey size add-on
   jerseyAddOn: {
     regularSizes: ['XS', 'S', 'M', 'L', 'XL'],  // No additional cost
     plusSizes: ['XXL', 'XXXL'],                  // Additional cost
-    plusSizeCost: 20000,                         // Additional cost for plus sizes
+    plusSizeCost: 20000,                         // Additional Rp 20.000 for plus sizes
   },
 
   // Quota limits
   quota: {
-    '5K': 300,
-    '10K': 200,
-    'COMMUNITY': 100, // Max community groups or participants
-    total: 500
+    '5K': 3000,
+    '10K': 2000,
+    total: 5000
   }
 };
 
@@ -49,6 +56,7 @@ export const PRICING_CONFIG = {
 export function calculateIndividualPrice(
   category: '5K' | '10K',
   jerseySize: string,
+  isEarlyBird?: boolean,
   registrationDate?: Date
 ): {
   basePrice: number;
@@ -57,12 +65,17 @@ export function calculateIndividualPrice(
   isEarlyBird: boolean;
   breakdown: string[];
 } {
-  const today = registrationDate || new Date();
-  const isEarlyBird = today < PRICING_CONFIG.earlyBirdDeadline;
+  // If isEarlyBird is explicitly provided (from import), use it
+  // Otherwise check the date
+  let earlyBird = isEarlyBird;
+  if (earlyBird === undefined) {
+    const today = registrationDate || new Date();
+    earlyBird = today < PRICING_CONFIG.earlyBirdDeadline;
+  }
 
   // Get base price
   const categoryPricing = PRICING_CONFIG.individual[category];
-  const basePrice = isEarlyBird ? categoryPricing.earlyBird : categoryPricing.regular;
+  const basePrice = earlyBird ? categoryPricing.earlyBird : categoryPricing.regular;
 
   // Calculate jersey add-on
   const jerseyAddOn = PRICING_CONFIG.jerseyAddOn.plusSizes.includes(jerseySize)
@@ -77,8 +90,8 @@ export function calculateIndividualPrice(
     `Registrasi ${category}: Rp ${basePrice.toLocaleString('id-ID')}`,
   ];
 
-  if (isEarlyBird) {
-    breakdown.push('✓ Harga Early Bird');
+  if (earlyBird) {
+    breakdown.push('✓ Harga Early Bird (Diskon 10%)');
   }
 
   if (jerseyAddOn > 0) {
@@ -89,13 +102,14 @@ export function calculateIndividualPrice(
     basePrice,
     jerseyAddOn,
     totalPrice,
-    isEarlyBird,
+    isEarlyBird: earlyBird,
     breakdown
   };
 }
 
 // Helper function to calculate community price
 export function calculateCommunityPrice(
+  category: '5K' | '10K',
   participantCount: number,
   plusSizeCount: number = 0
 ): {
@@ -108,6 +122,7 @@ export function calculateCommunityPrice(
   breakdown: string[];
 } {
   const config = PRICING_CONFIG.community;
+  const categoryConfig = config[category];
 
   // Calculate promo (buy 10 get 1 free)
   const hasPromo = participantCount >= config.promoThreshold;
@@ -115,7 +130,7 @@ export function calculateCommunityPrice(
   const chargedParticipants = participantCount - freeParticipants;
 
   // Calculate base price
-  const basePrice = chargedParticipants * config.basePrice;
+  const basePrice = chargedParticipants * categoryConfig.basePrice;
 
   // Calculate jersey add-on
   const jerseyAddOn = plusSizeCount * PRICING_CONFIG.jerseyAddOn.plusSizeCost;
@@ -125,7 +140,7 @@ export function calculateCommunityPrice(
 
   // Breakdown
   const breakdown = [
-    `${participantCount} peserta × Rp ${config.basePrice.toLocaleString('id-ID')}`,
+    `${participantCount} peserta × Rp ${categoryConfig.basePrice.toLocaleString('id-ID')}`,
   ];
 
   if (hasPromo) {
@@ -166,9 +181,9 @@ export function formatCurrency(amount: number): string {
 
 // Get remaining quota
 export async function getRemainingQuota(
-  category: '5K' | '10K' | 'COMMUNITY',
+  category: '5K' | '10K',
   currentCount: number
-): Promise <number> {
+): Promise<number> {
   const limit = PRICING_CONFIG.quota[category];
   return Promise.resolve(Math.max(0, limit - currentCount));
 }

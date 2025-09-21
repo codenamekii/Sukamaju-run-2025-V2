@@ -1,6 +1,15 @@
 'use client';
 
 import {
+  Payment,
+  PAYMENT_STATUS,
+  PAYMENT_STATUS_DISPLAY,
+  PaymentStatus,
+  PaymentUpdateRequest,
+  RefundRequest
+} from '@/app/types/payment';
+import {
+  AlertCircle,
   ArrowUpRight,
   CheckCircle,
   Clock,
@@ -16,44 +25,17 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-interface Payment {
-  id: string;
-  paymentCode: string;
-  amount: number;
-  paymentMethod: string | null;
-  paymentChannel: string | null;
-  midtransOrderId: string | null;
-  vaNumber: string | null;
-  status: string;
-  paidAt: string | null;
-  expiredAt: string | null;
-  createdAt: string;
-  participant?: {
-    id: string;
-    fullName: string;
-    email: string;
-    whatsapp: string;
-    category: string;
-    registrationCode: string;
-  };
-  communityRegistration?: {
-    id: string;
-    communityName: string;
-    picName: string;
-    picEmail: string;
-    totalMembers: number;
-    category: string;
-  };
-}
-
 interface PaymentStats {
   total: number;
-  paid: number;
+  success: number;
   pending: number;
   failed: number;
+  expired: number;
+  refunded: number;
   totalRevenue: number;
   todayRevenue: number;
   pendingAmount: number;
+  averageAmount: number;
 }
 
 interface PaginationData {
@@ -63,16 +45,26 @@ interface PaginationData {
   totalPages: number;
 }
 
+interface ApiResponse<T> {
+  success?: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [stats, setStats] = useState<PaymentStats>({
     total: 0,
-    paid: 0,
+    success: 0,
     pending: 0,
     failed: 0,
+    expired: 0,
+    refunded: 0,
     totalRevenue: 0,
     todayRevenue: 0,
-    pendingAmount: 0
+    pendingAmount: 0,
+    averageAmount: 0
   });
   const [pagination, setPagination] = useState<PaginationData>({
     page: 1,
@@ -91,10 +83,12 @@ export default function PaymentsPage() {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showRefundModal, setShowRefundModal] = useState(false);
-  const [refundData, setRefundData] = useState({
+  const [refundData, setRefundData] = useState<Omit<RefundRequest, 'paymentId'>>({
     amount: 0,
     reason: ''
   });
+  const [processingAction, setProcessingAction] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPayments();
@@ -103,6 +97,7 @@ export default function PaymentsPage() {
   const fetchPayments = async () => {
     try {
       setLoading(true);
+      setError(null);
       const params = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString()
@@ -121,77 +116,122 @@ export default function PaymentsPage() {
         setPayments(data.payments);
         setStats(data.stats);
         setPagination(data.pagination);
+      } else {
+        setError(data.error || 'Failed to fetch payments');
       }
     } catch (error) {
       console.error('Failed to fetch payments:', error);
+      setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleStatusUpdate = async (paymentId: string, newStatus: string) => {
-    if (!confirm(`Update payment status to ${newStatus}?`)) return;
+  const handleStatusUpdate = async (paymentId: string, newStatus: PaymentStatus) => {
+    const displayStatus = PAYMENT_STATUS_DISPLAY[newStatus];
+
+    if (!confirm(`Update payment status to ${displayStatus}?`)) return;
 
     try {
+      setProcessingAction(true);
+      setError(null);
+
+      const updateData: PaymentUpdateRequest = {
+        paymentId,
+        status: newStatus,
+        notes: `Manual update to ${displayStatus}`
+      };
+
       const response = await fetch('/api/admin/payments', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentId,
-          status: newStatus,
-          notes: `Manual update to ${newStatus}`
-        })
+        body: JSON.stringify(updateData)
       });
 
-      if (response.ok) {
+      const data: ApiResponse<Payment> = await response.json();
+
+      if (response.ok && data.success) {
         await fetchPayments();
         setShowDetailModal(false);
+        // Show success message (you can add a toast here)
+        console.log(data.message || `Payment status updated to ${displayStatus}`);
+      } else {
+        setError(data.error || `Failed to update payment status`);
       }
     } catch (error) {
       console.error('Failed to update payment:', error);
+      setError('Network error. Please try again.');
+    } finally {
+      setProcessingAction(false);
     }
   };
 
   const handleRefund = async () => {
     if (!selectedPayment) return;
 
+    if (refundData.amount <= 0 || refundData.amount > selectedPayment.amount) {
+      setError('Invalid refund amount');
+      return;
+    }
+
+    if (!refundData.reason.trim()) {
+      setError('Please provide a reason for the refund');
+      return;
+    }
+
     try {
+      setProcessingAction(true);
+      setError(null);
+
+      const request: RefundRequest = {
+        paymentId: selectedPayment.id,
+        amount: refundData.amount,
+        reason: refundData.reason
+      };
+
       const response = await fetch('/api/admin/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentId: selectedPayment.id,
-          amount: refundData.amount,
-          reason: refundData.reason
-        })
+        body: JSON.stringify(request)
       });
 
-      if (response.ok) {
+      const data: ApiResponse<Payment> = await response.json();
+
+      if (response.ok && data.success) {
         await fetchPayments();
         setShowRefundModal(false);
         setRefundData({ amount: 0, reason: '' });
+        // Show success message
+        console.log('Refund processed successfully');
+      } else {
+        setError(data.error || 'Failed to process refund');
       }
     } catch (error) {
       console.error('Failed to process refund:', error);
+      setError('Network error. Please try again.');
+    } finally {
+      setProcessingAction(false);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const badges: Record<string, { icon: React.ElementType; class: string; label: string }> = {
-      'PAID': { icon: CheckCircle, class: 'bg-green-100 text-green-800', label: 'Paid' },
-      'PENDING': { icon: Clock, class: 'bg-yellow-100 text-yellow-800', label: 'Pending' },
-      'FAILED': { icon: XCircle, class: 'bg-red-100 text-red-800', label: 'Failed' },
-      'CANCELLED': { icon: XCircle, class: 'bg-gray-100 text-gray-800', label: 'Cancelled' },
-      'REFUNDED': { icon: RotateCcw, class: 'bg-purple-100 text-purple-800', label: 'Refunded' }
+  const getStatusBadge = (status: PaymentStatus) => {
+    const displayText = PAYMENT_STATUS_DISPLAY[status];
+    const badges: Record<PaymentStatus, { icon: React.ElementType; class: string }> = {
+      SUCCESS: { icon: CheckCircle, class: 'bg-green-100 text-green-800' },
+      PENDING: { icon: Clock, class: 'bg-yellow-100 text-yellow-800' },
+      FAILED: { icon: XCircle, class: 'bg-red-100 text-red-800' },
+      EXPIRED: { icon: Clock, class: 'bg-gray-100 text-gray-800' },
+      CANCELLED: { icon: XCircle, class: 'bg-gray-100 text-gray-800' },
+      REFUNDED: { icon: RotateCcw, class: 'bg-purple-100 text-purple-800' }
     };
 
-    const badge = badges[status] || badges.PENDING;
+    const badge = badges[status];
     const Icon = badge.icon;
 
     return (
       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badge.class}`}>
         <Icon className="w-3 h-3 mr-1" />
-        {badge.label}
+        {displayText}
       </span>
     );
   };
@@ -230,10 +270,11 @@ export default function PaymentsPage() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => window.location.reload()}
-            className="flex items-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            onClick={() => fetchPayments()}
+            disabled={loading}
+            className="flex items-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
           <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
@@ -242,6 +283,20 @@ export default function PaymentsPage() {
           </button>
         </div>
       </div>
+
+      {/* Error Alert */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center">
+          <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+          <span className="text-red-800">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="ml-auto text-red-600 hover:text-red-800"
+          >
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Revenue Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -295,9 +350,9 @@ export default function PaymentsPage() {
             <div>
               <p className="text-sm font-medium text-gray-600">Success Rate</p>
               <p className="text-2xl font-semibold text-purple-600 mt-1">
-                {stats.total > 0 ? `${((stats.paid / stats.total) * 100).toFixed(1)}%` : '0%'}
+                {stats.total > 0 ? `${((stats.success / stats.total) * 100).toFixed(1)}%` : '0%'}
               </p>
-              <p className="text-xs text-gray-500 mt-2">{stats.paid} of {stats.total}</p>
+              <p className="text-xs text-gray-500 mt-2">{stats.success} of {stats.total}</p>
             </div>
             <CheckCircle className="w-8 h-8 text-purple-500" />
           </div>
@@ -326,10 +381,9 @@ export default function PaymentsPage() {
             onChange={(e) => setFilterStatus(e.target.value)}
           >
             <option value="all">All Status</option>
-            <option value="PAID">Paid</option>
-            <option value="PENDING">Pending</option>
-            <option value="FAILED">Failed</option>
-            <option value="REFUNDED">Refunded</option>
+            {Object.entries(PAYMENT_STATUS_DISPLAY).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
           </select>
 
           <select
@@ -396,7 +450,10 @@ export default function PaymentsPage() {
               {loading ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                    Loading payments...
+                    <div className="flex justify-center items-center">
+                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                      Loading payments...
+                    </div>
                   </td>
                 </tr>
               ) : payments.length === 0 ? (
@@ -481,7 +538,7 @@ export default function PaymentsPage() {
                           Paid: {formatDateTime(payment.paidAt)}
                         </div>
                       )}
-                      {payment.expiredAt && payment.status === 'PENDING' && (
+                      {payment.expiredAt && payment.status === PAYMENT_STATUS.PENDING && (
                         <div className="text-xs text-red-600">
                           Expires: {formatDateTime(payment.expiredAt)}
                         </div>
@@ -494,29 +551,32 @@ export default function PaymentsPage() {
                             setSelectedPayment(payment);
                             setShowDetailModal(true);
                           }}
-                          className="text-gray-600 hover:text-blue-600"
+                          className="text-gray-600 hover:text-blue-600 disabled:opacity-50"
                           title="View Details"
+                          disabled={processingAction}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        {payment.status === 'PENDING' && (
+                        {payment.status === PAYMENT_STATUS.PENDING && (
                           <button
-                            onClick={() => handleStatusUpdate(payment.id, 'PAID')}
-                            className="text-gray-600 hover:text-green-600"
+                            onClick={() => handleStatusUpdate(payment.id, PAYMENT_STATUS.SUCCESS)}
+                            className="text-gray-600 hover:text-green-600 disabled:opacity-50"
                             title="Mark as Paid"
+                            disabled={processingAction}
                           >
                             <CheckCircle className="w-4 h-4" />
                           </button>
                         )}
-                        {payment.status === 'PAID' && (
+                        {payment.status === PAYMENT_STATUS.SUCCESS && (
                           <button
                             onClick={() => {
                               setSelectedPayment(payment);
                               setRefundData({ amount: payment.amount, reason: '' });
                               setShowRefundModal(true);
                             }}
-                            className="text-gray-600 hover:text-purple-600"
+                            className="text-gray-600 hover:text-purple-600 disabled:opacity-50"
                             title="Process Refund"
+                            disabled={processingAction}
                           >
                             <RotateCcw className="w-4 h-4" />
                           </button>
@@ -536,14 +596,14 @@ export default function PaymentsPage() {
             <div className="flex-1 flex justify-between sm:hidden">
               <button
                 onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
-                disabled={pagination.page === 1}
+                disabled={pagination.page === 1 || loading}
                 className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
               >
                 Previous
               </button>
               <button
                 onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
-                disabled={pagination.page === pagination.totalPages}
+                disabled={pagination.page === pagination.totalPages || loading}
                 className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
               >
                 Next
@@ -563,14 +623,14 @@ export default function PaymentsPage() {
                 <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
                   <button
                     onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
-                    disabled={pagination.page === 1}
+                    disabled={pagination.page === 1 || loading}
                     className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                   >
                     Previous
                   </button>
                   <button
                     onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
-                    disabled={pagination.page === pagination.totalPages}
+                    disabled={pagination.page === pagination.totalPages || loading}
                     className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                   >
                     Next
@@ -592,6 +652,7 @@ export default function PaymentsPage() {
                 <button
                   onClick={() => setShowDetailModal(false)}
                   className="text-gray-400 hover:text-gray-600"
+                  disabled={processingAction}
                 >
                   <XCircle className="w-6 h-6" />
                 </button>
@@ -679,19 +740,21 @@ export default function PaymentsPage() {
                   </div>
                 </div>
 
-                {selectedPayment.status === 'PENDING' && (
+                {selectedPayment.status === PAYMENT_STATUS.PENDING && (
                   <div className="flex justify-end gap-3 pt-4 border-t">
                     <button
-                      onClick={() => handleStatusUpdate(selectedPayment.id, 'PAID')}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                      onClick={() => handleStatusUpdate(selectedPayment.id, PAYMENT_STATUS.SUCCESS)}
+                      disabled={processingAction}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
                     >
-                      Mark as Paid
+                      {processingAction ? 'Processing...' : 'Mark as Paid'}
                     </button>
                     <button
-                      onClick={() => handleStatusUpdate(selectedPayment.id, 'FAILED')}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                      onClick={() => handleStatusUpdate(selectedPayment.id, PAYMENT_STATUS.FAILED)}
+                      disabled={processingAction}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
                     >
-                      Mark as Failed
+                      {processingAction ? 'Processing...' : 'Mark as Failed'}
                     </button>
                   </div>
                 )}
@@ -712,12 +775,20 @@ export default function PaymentsPage() {
                   onClick={() => {
                     setShowRefundModal(false);
                     setRefundData({ amount: 0, reason: '' });
+                    setError(null);
                   }}
                   className="text-gray-400 hover:text-gray-600"
+                  disabled={processingAction}
                 >
                   <XCircle className="w-6 h-6" />
                 </button>
               </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                  {error}
+                </div>
+              )}
 
               <div className="space-y-4">
                 <div>
@@ -740,6 +811,7 @@ export default function PaymentsPage() {
                     onChange={(e) => setRefundData({ ...refundData, amount: Number(e.target.value) })}
                     max={selectedPayment.amount}
                     min={0}
+                    disabled={processingAction}
                   />
                 </div>
 
@@ -754,6 +826,7 @@ export default function PaymentsPage() {
                     onChange={(e) => setRefundData({ ...refundData, reason: e.target.value })}
                     placeholder="Enter reason for refund..."
                     required
+                    disabled={processingAction}
                   />
                 </div>
 
@@ -762,17 +835,19 @@ export default function PaymentsPage() {
                     onClick={() => {
                       setShowRefundModal(false);
                       setRefundData({ amount: 0, reason: '' });
+                      setError(null);
                     }}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    disabled={processingAction}
+                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleRefund}
-                    disabled={!refundData.amount || !refundData.reason}
+                    disabled={!refundData.amount || !refundData.reason || processingAction}
                     className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
                   >
-                    Process Refund
+                    {processingAction ? 'Processing...' : 'Process Refund'}
                   </button>
                 </div>
               </div>

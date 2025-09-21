@@ -18,6 +18,7 @@ import {
   Shield,
   Ticket,
   Trophy,
+  Upload,
   UserCog,
   Users,
   X
@@ -48,6 +49,11 @@ const menuItems: MenuItem[] = [
       { name: 'All Participants', href: '/admin/dashboard/participants', icon: Users },
       { name: 'Communities', href: '/admin/dashboard/participants/communities', icon: Trophy },
     ]
+  },
+  {
+    name: 'Import',
+    href: '/admin/dashboard/import',
+    icon: Upload
   },
   {
     name: 'Registrations',

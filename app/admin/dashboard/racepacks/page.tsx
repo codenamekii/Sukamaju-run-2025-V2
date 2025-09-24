@@ -279,7 +279,7 @@ export default function RacePacksPage() {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center">
                       <span className="text-sm text-gray-600 flex items-center">
                         <CheckCircle className="w-4 h-4 mr-2 text-green-500" />
                         Distributed

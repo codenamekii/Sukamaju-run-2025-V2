@@ -10,10 +10,17 @@ interface TemplateMetadata {
   lastUsed?: string;
 }
 
+// Type definition untuk params
+type Params = {
+  params: Promise<{
+    id: string;
+  }>;
+};
+
 // Helper: parse metadata dengan aman
-function parseMetadata(value: unknown): TemplateMetadata {
+function parseMetadata(value: object | null | undefined): TemplateMetadata {
   if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-    const obj = value as Record<string, unknown>;
+    const obj = value as Record<string, string | number | string[] | undefined>;
     return {
       name: typeof obj.name === 'string' ? obj.name : undefined,
       variables: Array.isArray(obj.variables) ? obj.variables.map(v => String(v)) : [],
@@ -27,18 +34,20 @@ function parseMetadata(value: unknown): TemplateMetadata {
 // GET single template
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: Params
 ) {
   try {
+    const { id } = await params;
+
     const template = await prisma.notification.findUnique({
-      where: { id: params.id }
+      where: { id }
     });
 
     if (!template) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    const metadata = parseMetadata(template.metadata);
+    const metadata = parseMetadata(template.metadata as object | null);
 
     return NextResponse.json({
       success: true,
@@ -66,24 +75,25 @@ export async function GET(
 // PATCH update template
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: Params
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const { name, type, category, subject, content, variables, isActive } = body;
 
     const currentTemplate = await prisma.notification.findUnique({
-      where: { id: params.id }
+      where: { id }
     });
 
     if (!currentTemplate) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
-    const currentMetadata = parseMetadata(currentTemplate.metadata);
+    const currentMetadata = parseMetadata(currentTemplate.metadata as object | null);
 
     const updated = await prisma.notification.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         type: type || currentTemplate.type,
         category: category || currentTemplate.category,
@@ -98,7 +108,7 @@ export async function PATCH(
       }
     });
 
-    const updatedMetadata = parseMetadata(updated.metadata);
+    const updatedMetadata = parseMetadata(updated.metadata as object | null);
 
     return NextResponse.json({
       success: true,
@@ -125,10 +135,12 @@ export async function PATCH(
 // DELETE template
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: Params
 ) {
   try {
-    await prisma.notification.delete({ where: { id: params.id } });
+    const { id } = await params;
+
+    await prisma.notification.delete({ where: { id } });
 
     return NextResponse.json({
       success: true,

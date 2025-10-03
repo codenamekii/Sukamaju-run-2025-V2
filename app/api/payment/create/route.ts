@@ -169,8 +169,6 @@ export async function POST(request: NextRequest) {
     // Build callback URLs
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const successUrl = `${baseUrl}/registration/success?code=${registrationCode}&type=${registrationType}`;
-    const pendingUrl = `${baseUrl}/registration/payment?code=${registrationCode}&type=${registrationType}&status=pending`;
-    const errorUrl = `${baseUrl}/registration/payment?code=${registrationCode}&type=${registrationType}&status=error`;
 
     // Midtrans transaction parameters
     const parameter = {

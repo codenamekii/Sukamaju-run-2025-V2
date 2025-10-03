@@ -57,30 +57,30 @@ export default function ReportsPage() {
   ];
 
   useEffect(() => {
+    const fetchReport = async () => {
+      try {
+        setLoading(true);
+        const params = new URLSearchParams({
+          type: selectedReport,
+          dateFrom: dateRange.from,
+          dateTo: dateRange.to
+        });
+
+        const response = await fetch(`/api/admin/reports?${params}`);
+        const data = await response.json();
+
+        if (response.ok) {
+          setReportData(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch report:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchReport();
   }, [selectedReport, dateRange]);
-
-  const fetchReport = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        type: selectedReport,
-        dateFrom: dateRange.from,
-        dateTo: dateRange.to
-      });
-
-      const response = await fetch(`/api/admin/reports?${params}`);
-      const data = await response.json();
-
-      if (response.ok) {
-        setReportData(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch report:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleExport = async (format: 'excel' | 'pdf') => {
     try {
@@ -120,11 +120,6 @@ export default function ReportsPage() {
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('id-ID').format(num);
-  };
-
-  const getPercentageChange = (current: number, previous: number) => {
-    if (previous === 0) return 100;
-    return ((current - previous) / previous) * 100;
   };
 
   const renderOverviewReport = () => {
@@ -431,6 +426,10 @@ export default function ReportsPage() {
       </div>
     );
   };
+
+  function fetchReport(): void {
+    throw new Error('Function not implemented.');
+  }
 
   return (
     <div className="p-6 space-y-6">

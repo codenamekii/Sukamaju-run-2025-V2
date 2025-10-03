@@ -180,14 +180,10 @@ export async function POST(request: NextRequest) {
     const pricing = calculateCommunityPrice(body.category, body.members);
 
     // Main transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Generate community code (simple counter)
-      const communityCode = await generateCommunityCode(tx);
-
-      // Pre-generate all BIB numbers to avoid gaps
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const communityCode = generateCommunityCode();
       const bibNumbers = await generateBibNumbersBatch(body.category, body.members.length, tx);
 
-      // Create community registration
       const community = await tx.communityRegistration.create({
         data: {
           communityName: body.communityName,

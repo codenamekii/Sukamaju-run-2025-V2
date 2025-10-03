@@ -3,6 +3,18 @@ import { prisma } from '@/lib/prisma';
 import WhatsAppService from './whatsapp.service';
 
 export class WhatsAppIntegrationService {
+  // Handle payment webhook from payment gateway
+  static handlePaymentWebhook(orderId: string, transactionStatus: string): void {
+    // TODO: Implement webhook handling logic
+    // This method will be implemented when integrating with payment gateway
+    console.log('Payment webhook received:', { orderId, transactionStatus });
+
+    // Example implementation:
+    // if (transactionStatus === 'settlement' || transactionStatus === 'capture') {
+    //   await this.onPaymentSuccess(orderId);
+    // }
+  }
+
   // Send bulk notifications to participants
   static async sendBulkNotifications(
     participantIds: string[],

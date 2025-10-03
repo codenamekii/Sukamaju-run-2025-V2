@@ -4,6 +4,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 interface WhatsAppResponse {
+  detail: string;
   status: boolean;
   data?: Record<string, string | number | boolean>;
   reason?: string;
@@ -18,6 +19,10 @@ interface BulkSendResult {
 }
 
 export class WhatsAppService {
+  static sendPaymentReminder(phone: string, amount: number) {
+    const message = `Reminder: Your payment of ${amount} is due. Please make the payment to avoid any late fees.`;
+    return this.sendMessage(phone, message);
+  }
   private static token = process.env.FONNTE_TOKEN;
   private static domain = 'https://api.fonnte.com';
   private static isMockMode = process.env.WHATSAPP_MOCK_MODE === 'true';
@@ -42,24 +47,6 @@ export class WhatsAppService {
           metadata: {}
         }
       });
-
-      // Mock mode for testing
-      if (this.isMockMode) {
-        console.log('📱 MOCK WhatsApp Message:');
-        console.log('To:', formattedPhone);
-        console.log('Message:', message.substring(0, 200) + '...');
-
-        await prisma.notification.update({
-          where: { id: notification.id },
-          data: {
-            status: 'SENT',
-            sentAt: new Date(),
-            metadata: { mockMode: true }
-          }
-        });
-
-        return { status: true, data: { mock: true } };
-      }
 
       // Check if token exists
       if (!this.token) {

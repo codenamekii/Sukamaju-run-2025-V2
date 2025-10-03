@@ -1,7 +1,7 @@
 "use client";
 
 import { RegistrationService } from "@/lib/services/registration.service";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 declare global {
   interface Window {
@@ -36,27 +36,17 @@ export function PaymentModal({
 }: PaymentModalProps) {
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const midtransScriptUrl =
-      process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true"
-        ? "https://app.midtrans.com/snap/snap.js"
-        : "https://app.sandbox.midtrans.com/snap/snap.js";
-
-    const script = document.createElement("script");
-    script.src = midtransScriptUrl;
-    script.setAttribute(
-      "data-client-key",
-      process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || ""
-    );
-    script.onload = () => initializePayment();
-    document.body.appendChild(script);
-
-    return () => {
-      document.body.removeChild(script);
+  // gunakan useCallback agar stabil dan bisa dipanggil dari useEffect
+  const initializePayment = useCallback(async () => {
+    const checkPaymentStatus = async (orderId: string) => {
+      const result = await RegistrationService.checkPaymentStatus(orderId);
+      if (result?.data?.status === "SUCCESS") {
+        onSuccess();
+      } else if (result?.data?.status === "PENDING") {
+        onPending();
+      }
     };
-  }, []);
 
-  const initializePayment = async () => {
     try {
       const { token, orderId } =
         await RegistrationService.createPaymentTransaction(registrationCode);
@@ -85,16 +75,27 @@ export function PaymentModal({
       setIsLoading(false);
       onError(error);
     }
-  };
+  }, [registrationCode, onSuccess, onPending, onError]);
 
-  const checkPaymentStatus = async (orderId: string) => {
-    const result = await RegistrationService.checkPaymentStatus(orderId);
-    if (result?.data?.status === "SUCCESS") {
-      onSuccess();
-    } else if (result?.data?.status === "PENDING") {
-      onPending();
-    }
-  };
+  useEffect(() => {
+    const midtransScriptUrl =
+      process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true"
+        ? "https://app.midtrans.com/snap/snap.js"
+        : "https://app.sandbox.midtrans.com/snap/snap.js";
+
+    const script = document.createElement("script");
+    script.src = midtransScriptUrl;
+    script.setAttribute(
+      "data-client-key",
+      process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || ""
+    );
+    script.onload = () => initializePayment();
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, [initializePayment]);
 
   if (isLoading) {
     return (

@@ -119,23 +119,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [adminName, setAdminName] = useState('Admin');
 
   useEffect(() => {
-    // Check auth status
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const response = await fetch('/api/admin/auth/check');
-      if (!response.ok) {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/admin/auth/check');
+        if (!response.ok) {
+          router.push('/admin/login');
+        } else {
+          const data = await response.json();
+          setAdminName(data.name || 'Admin');
+        }
+      } catch {
         router.push('/admin/login');
-      } else {
-        const data = await response.json();
-        setAdminName(data.name || 'Admin');
       }
-    } catch {
-      router.push('/admin/login');
-    }
-  };
+    };
+
+    checkAuth();
+  }, [router]); // cukup router aja
 
   const handleLogout = async () => {
     await fetch('/api/admin/auth/logout', { method: 'POST' });

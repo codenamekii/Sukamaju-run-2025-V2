@@ -13,13 +13,6 @@ interface WhatsAppMessage {
   url?: string;
 }
 
-interface NotificationData {
-  participantId?: string;
-  communityId?: string;
-  type: 'REGISTRATION' | 'PAYMENT_PENDING' | 'PAYMENT_SUCCESS' | 'PAYMENT_FAILED' | 'CHECK_IN' | 'REMINDER';
-  templateData: Record<string, string | number>;
-}
-
 // Send WhatsApp message using Fonnte API
 async function sendWhatsAppMessage(data: WhatsAppMessage): Promise<boolean> {
   try {

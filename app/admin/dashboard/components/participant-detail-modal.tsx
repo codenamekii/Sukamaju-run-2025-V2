@@ -11,7 +11,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Participant } from "../components/types";
 
 interface ParticipantDetailProps {
@@ -35,13 +35,7 @@ export default function ParticipantDetailModal({
     "personal" | "contact" | "race" | "payment" | "emergency"
   >("personal");
 
-  useEffect(() => {
-    if (isOpen && participantId) {
-      fetchParticipantDetails();
-    }
-  }, [isOpen, participantId]);
-
-  const fetchParticipantDetails = async () => {
+  const fetchParticipantDetails = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch(`/api/admin/participants/${participantId}`);
@@ -55,7 +49,13 @@ export default function ParticipantDetailModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [participantId]);
+
+  useEffect(() => {
+    if (isOpen && participantId) {
+      fetchParticipantDetails();
+    }
+  }, [isOpen, participantId, fetchParticipantDetails]);
 
   const handleSave = async () => {
     try {

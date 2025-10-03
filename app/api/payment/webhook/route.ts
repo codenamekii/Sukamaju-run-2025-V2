@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
       registrationStatus = 'CANCELLED';
     } else if (transactionStatus === 'cancel') {
       paymentStatus = 'CANCELLED';
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       registrationStatus = 'CANCELLED';
     }
 
@@ -125,7 +126,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // Use the integration service to handle notifications
-        await WhatsAppIntegrationService.handlePaymentWebhook(
+        WhatsAppIntegrationService.handlePaymentWebhook(
           notification.order_id,
           transactionStatus
         );

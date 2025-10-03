@@ -1,3 +1,4 @@
+// app/api/admin/reports/route.ts
 import {
   getCheckInReport,
   getDemographicsReport,
@@ -19,8 +20,8 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const reportType = searchParams.get('type') || 'overview';
-    const dateFrom = searchParams.get('dateFrom');
-    const dateTo = searchParams.get('dateTo');
+    const dateFrom = searchParams.get('dateFrom'); // string | null
+    const dateTo = searchParams.get('dateTo');     // string | null
 
     let reportData: Record<string, unknown> = {};
 
@@ -35,10 +36,10 @@ export async function GET(request: NextRequest) {
         reportData = await getRevenueReport(dateFrom, dateTo);
         break;
       case 'demographics':
-        reportData = await getDemographicsReport();
+        reportData = await getDemographicsReport(dateFrom, dateTo);
         break;
       case 'checkin':
-        reportData = await getCheckInReport();
+        reportData = await getCheckInReport(dateFrom, dateTo);
         break;
       case 'performance':
         reportData = await getPerformanceReport(dateFrom, dateTo);
@@ -72,7 +73,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { reportType, format, dateFrom, dateTo } = body;
 
-    // Validate input
     if (!reportType || !format) {
       return NextResponse.json(
         { error: 'Missing required fields' },
@@ -80,7 +80,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate report data
     let reportData: Record<string, unknown> = {};
 
     switch (reportType) {
@@ -94,10 +93,10 @@ export async function POST(request: NextRequest) {
         reportData = await getRevenueReport(dateFrom, dateTo);
         break;
       case 'demographics':
-        reportData = await getDemographicsReport();
+        reportData = await getDemographicsReport(dateFrom, dateTo);
         break;
       case 'checkin':
-        reportData = await getCheckInReport();
+        reportData = await getCheckInReport(dateFrom, dateTo);
         break;
       case 'performance':
         reportData = await getPerformanceReport(dateFrom, dateTo);
@@ -105,11 +104,6 @@ export async function POST(request: NextRequest) {
       default:
         return NextResponse.json({ error: 'Invalid report type' }, { status: 400 });
     }
-
-    // In production, you would generate actual Excel/PDF here using libraries like:
-    // - ExcelJS for Excel files
-    // - PDFKit or jsPDF for PDF files
-    // For now, return JSON data with a mock download URL
 
     const exportId = `export_${reportType}_${Date.now()}`;
 
@@ -119,7 +113,7 @@ export async function POST(request: NextRequest) {
       exportId,
       data: reportData,
       downloadUrl: `/api/admin/reports/download?id=${exportId}`,
-      expiresAt: new Date(Date.now() + 3600000) // 1 hour expiry
+      expiresAt: new Date(Date.now() + 3600000) // 1 jam
     });
   } catch (error) {
     console.error('Report export error:', error);

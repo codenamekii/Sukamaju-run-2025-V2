@@ -6,10 +6,15 @@ import {
   Building2,
   CheckCircle,
   ChevronRight,
-  Clock, CreditCard, LucideIcon, Smartphone, Store, Wallet
-} from 'lucide-react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+  Clock,
+  CreditCard,
+  LucideIcon,
+  Smartphone,
+  Store,
+  Wallet,
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
 interface PaymentMethod {
   type: string;
@@ -24,62 +29,87 @@ interface PaymentMethod {
   }>;
 }
 
+interface Participant {
+  id: string;
+  fullName: string;
+  category: string;
+  bibNumber: string;
+  jerseySize: string;
+  basePrice: number;
+  jerseyAddOn: number;
+  totalPrice: number;
+}
+
+interface Community {
+  id: string;
+  communityName: string;
+  category: string;
+  totalMembers: number;
+  finalPrice: number;
+}
+
+interface RegistrationData {
+  participant?: Participant;
+  community?: Community;
+}
+
 const paymentMethods: PaymentMethod[] = [
   {
-    type: 'bank_transfer',
-    name: 'Transfer Bank',
+    type: "bank_transfer",
+    name: "Transfer Bank",
     icon: Building2,
-    description: 'Bayar melalui ATM, Internet Banking, atau Mobile Banking',
+    description: "Bayar melalui ATM, Internet Banking, atau Mobile Banking",
     banks: [
-      { code: 'bca', name: 'BCA', vaPrefix: '8860' },
-      { code: 'bni', name: 'BNI', vaPrefix: '8810' },
-      { code: 'bri', name: 'BRI', vaPrefix: '8820' },
-      { code: 'mandiri', name: 'Mandiri', vaPrefix: '8840' },
-    ]
+      { code: "bca", name: "BCA", vaPrefix: "8860" },
+      { code: "bni", name: "BNI", vaPrefix: "8810" },
+      { code: "bri", name: "BRI", vaPrefix: "8820" },
+      { code: "mandiri", name: "Mandiri", vaPrefix: "8840" },
+    ],
   },
   {
-    type: 'e_wallet',
-    name: 'E-Wallet',
+    type: "e_wallet",
+    name: "E-Wallet",
     icon: Wallet,
-    description: 'Bayar instant dengan e-wallet favorit Anda',
+    description: "Bayar instant dengan e-wallet favorit Anda",
     banks: [
-      { code: 'gopay', name: 'GoPay' },
-      { code: 'shopeepay', name: 'ShopeePay' },
-      { code: 'dana', name: 'DANA' },
-      { code: 'ovo', name: 'OVO' },
-    ]
+      { code: "gopay", name: "GoPay" },
+      { code: "shopeepay", name: "ShopeePay" },
+      { code: "dana", name: "DANA" },
+      { code: "ovo", name: "OVO" },
+    ],
   },
   {
-    type: 'qris',
-    name: 'QRIS',
+    type: "qris",
+    name: "QRIS",
     icon: Smartphone,
-    description: 'Scan QR dengan aplikasi pembayaran apapun'
+    description: "Scan QR dengan aplikasi pembayaran apapun",
   },
   {
-    type: 'convenience_store',
-    name: 'Minimarket',
+    type: "convenience_store",
+    name: "Minimarket",
     icon: Store,
-    description: 'Bayar tunai di minimarket terdekat',
+    description: "Bayar tunai di minimarket terdekat",
     banks: [
-      { code: 'indomaret', name: 'Indomaret' },
-      { code: 'alfamart', name: 'Alfamart' },
-    ]
-  }
+      { code: "indomaret", name: "Indomaret" },
+      { code: "alfamart", name: "Alfamart" },
+    ],
+  },
 ];
 
-export default function PaymentPage() {
+// Component that uses useSearchParams - must be wrapped in Suspense
+function PaymentPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
-  const [registrationData, setRegistrationData] = useState< any >(null);
-  const [selectedMethod, setSelectedMethod] = useState<string>('');
-  const [selectedBank, setSelectedBank] = useState<string>('');
-  const [timeLeft, setTimeLeft] = useState(86400); // 24 hours
-  const [error, setError] = useState('');
+  const [registrationData, setRegistrationData] = useState<RegistrationData | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<string>("");
+  const [selectedBank, setSelectedBank] = useState<string>("");
+  const [timeLeft, setTimeLeft] = useState(86400); // 24 jam
+  const [error, setError] = useState("");
 
-  const registrationCode = searchParams.get('code');
-  const type = searchParams.get('type') || 'INDIVIDUAL';
+  const registrationCode = searchParams.get("code");
+  const type = (searchParams.get("type") || "INDIVIDUAL").toUpperCase();
 
   useEffect(() => {
     if (!registrationCode) {
@@ -97,13 +127,13 @@ export default function PaymentPage() {
         const response = await fetch(endpoint);
         const data = await response.json();
 
-        if (data.success) {
-          setRegistrationData(data.data);
+        if (data?.success) {
+          setRegistrationData(data.data || null);
         } else {
           setError("Data registrasi tidak ditemukan");
         }
-      } catch (error) {
-        console.error("Error fetching registration:", error);
+      } catch (err) {
+        console.error("Error fetching registration:", err);
         setError("Terjadi kesalahan saat memuat data");
       }
     };
@@ -123,72 +153,79 @@ export default function PaymentPage() {
     return () => clearInterval(timer);
   }, [registrationCode, router, type]);
 
-
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0,
     }).format(amount);
   };
 
   const handlePayment = async () => {
+    if (!registrationData) return; // safeguard
+
     if (!selectedMethod) {
-      setError('Pilih metode pembayaran');
+      setError("Pilih metode pembayaran");
       return;
     }
 
-    if ((selectedMethod === 'bank_transfer' || selectedMethod === 'e_wallet' || selectedMethod === 'convenience_store') && !selectedBank) {
-      setError('Pilih bank atau provider');
+    if (
+      (selectedMethod === "bank_transfer" ||
+        selectedMethod === "e_wallet" ||
+        selectedMethod === "convenience_store") &&
+      !selectedBank
+    ) {
+      setError("Pilih bank atau provider");
       return;
     }
 
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
       const paymentData = {
         participantId: registrationData.participant?.id,
         communityRegistrationId: registrationData.community?.id,
-        amount: type === 'COMMUNITY'
-          ? registrationData.community.finalPrice
-          : registrationData.participant.totalPrice,
+        amount:
+          type === "COMMUNITY"
+            ? registrationData.community?.finalPrice ?? 0
+            : registrationData.participant?.totalPrice ?? 0,
         registrationCode,
         paymentMethod: selectedMethod,
-        paymentChannel: selectedBank || selectedMethod
+        paymentChannel: selectedBank || selectedMethod,
       };
 
-      const response = await fetch('/api/payment/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(paymentData)
+      const response = await fetch("/api/payment/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(paymentData),
       });
 
       const result = await response.json();
 
-      console.log("Payment API result:", result);
-
-      if (result.success && result.redirect_url) {
-        // Redirect to Midtrans
+      if (result?.success && result.redirect_url) {
         window.location.href = result.redirect_url;
       } else {
-        throw new Error(result.error || 'Payment creation failed');
+        throw new Error(result?.error || "Payment creation failed");
       }
-    } catch (error) {
-      console.error('Payment error:', error);
-      setError(error instanceof Error ? error.message : 'Terjadi kesalahan. Silakan coba lagi.');
+    } catch (err) {
+      console.error("Payment error:", err);
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan. Silakan coba lagi.");
     } finally {
       setLoading(false);
     }
   };
 
+  // Loading / placeholder while fetch
   if (!registrationData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -200,9 +237,10 @@ export default function PaymentPage() {
     );
   }
 
-  const totalAmount = type === 'COMMUNITY'
-    ? registrationData.community?.finalPrice
-    : registrationData.participant?.totalPrice;
+  const totalAmount =
+    type === "COMMUNITY"
+      ? registrationData.community?.finalPrice ?? 0
+      : registrationData.participant?.totalPrice ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -218,7 +256,7 @@ export default function PaymentPage() {
               Kembali
             </button>
             <h1 className="text-xl font-bold">Pembayaran</h1>
-            <div className="w-20"></div>
+            <div className="w-20" />
           </div>
         </div>
       </div>
@@ -268,52 +306,45 @@ export default function PaymentPage() {
                     <button
                       onClick={() => {
                         setSelectedMethod(method.type);
-                        setSelectedBank('');
-                        setError('');
+                        setSelectedBank("");
+                        setError("");
                       }}
-                      className={`w-full p-4 flex items-center justify-between transition-colors ${selectedMethod === method.type
-                        ? 'bg-primary/5 border-primary'
-                        : 'hover:bg-gray-50'
+                      className={`w-full p-4 flex items-center justify-between transition-colors ${selectedMethod === method.type ? "bg-primary/5 border-primary" : "hover:bg-gray-50"
                         }`}
                     >
                       <div className="flex items-center">
-                        <div className={`p-2 rounded-lg ${selectedMethod === method.type ? 'bg-primary/10' : 'bg-gray-100'
-                          }`}>
-                          <method.icon className={`w-5 h-5 ${selectedMethod === method.type ? 'text-primary' : 'text-gray-600'
-                            }`} />
+                        <div className={`p-2 rounded-lg ${selectedMethod === method.type ? "bg-primary/10" : "bg-gray-100"}`}>
+                          <method.icon className={`w-5 h-5 ${selectedMethod === method.type ? "text-primary" : "text-gray-600"}`} />
                         </div>
                         <div className="ml-4 text-left">
                           <p className="font-semibold text-gray-900">{method.name}</p>
-                          {method.description && (
-                            <p className="text-xs text-gray-500 mt-0.5">{method.description}</p>
-                          )}
+                          {method.description && <p className="text-xs text-gray-500 mt-0.5">{method.description}</p>}
                         </div>
                       </div>
-                      <ChevronRight className={`w-5 h-5 transition-transform ${selectedMethod === method.type ? 'rotate-90 text-primary' : 'text-gray-400'
-                        }`} />
+                      <ChevronRight
+                        className={`w-5 h-5 transition-transform ${selectedMethod === method.type ? "rotate-90 text-primary" : "text-gray-400"}`}
+                      />
                     </button>
 
                     {/* Bank/Provider Options */}
                     {selectedMethod === method.type && method.banks && (
                       <div className="border-t bg-gray-50 p-4">
-                        <p className="text-sm text-gray-600 mb-3">Pilih {method.type === 'bank_transfer' ? 'Bank' : 'Provider'}:</p>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Pilih {method.type === "bank_transfer" ? "Bank" : "Provider"}:
+                        </p>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           {method.banks.map((bank) => (
                             <button
                               key={bank.code}
                               onClick={() => {
                                 setSelectedBank(bank.code);
-                                setError('');
+                                setError("");
                               }}
-                              className={`p-3 rounded-lg border-2 transition-all ${selectedBank === bank.code
-                                ? 'border-primary bg-primary/5 shadow-sm'
-                                : 'border-gray-200 hover:border-gray-300 bg-white'
+                              className={`p-3 rounded-lg border-2 transition-all ${selectedBank === bank.code ? "border-primary bg-primary/5 shadow-sm" : "border-gray-200 hover:border-gray-300 bg-white"
                                 }`}
                             >
                               <p className="font-semibold text-sm">{bank.name}</p>
-                              {bank.vaPrefix && (
-                                <p className="text-xs text-gray-500 mt-1">VA: {bank.vaPrefix}xxx</p>
-                              )}
+                              {bank.vaPrefix && <p className="text-xs text-gray-500 mt-1">VA: {bank.vaPrefix}xxx</p>}
                             </button>
                           ))}
                         </div>
@@ -327,13 +358,15 @@ export default function PaymentPage() {
               <div className="mt-6 pt-6 border-t">
                 <button
                   onClick={handlePayment}
-                  disabled={!selectedMethod || loading || (
-                    (selectedMethod === 'bank_transfer' || selectedMethod === 'e_wallet' || selectedMethod === 'convenience_store')
-                    && !selectedBank
-                  )}
-                  className={`w-full py-4 rounded-lg font-semibold transition-all flex items-center justify-center ${!selectedMethod || loading || ((selectedMethod === 'bank_transfer' || selectedMethod === 'e_wallet' || selectedMethod === 'convenience_store') && !selectedBank)
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    : 'bg-primary text-white hover:bg-primary/90 shadow-lg hover:shadow-xl'
+                  disabled={
+                    !selectedMethod ||
+                    loading ||
+                    ((selectedMethod === "bank_transfer" || selectedMethod === "e_wallet" || selectedMethod === "convenience_store") &&
+                      !selectedBank)
+                  }
+                  className={`w-full py-4 rounded-lg font-semibold transition-all flex items-center justify-center ${!selectedMethod || loading || ((selectedMethod === "bank_transfer" || selectedMethod === "e_wallet" || selectedMethod === "convenience_store") && !selectedBank)
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-primary text-white hover:bg-primary/90 shadow-lg hover:shadow-xl"
                     }`}
                 >
                   {loading ? (
@@ -349,9 +382,7 @@ export default function PaymentPage() {
                   )}
                 </button>
 
-                <p className="text-xs text-gray-500 text-center mt-3">
-                  Anda akan diarahkan ke halaman pembayaran yang aman
-                </p>
+                <p className="text-xs text-gray-500 text-center mt-3">Anda akan diarahkan ke halaman pembayaran yang aman</p>
               </div>
             </div>
           </div>
@@ -375,45 +406,45 @@ export default function PaymentPage() {
 
                   {/* Details */}
                   <div className="space-y-3 py-4 border-y">
-                    {type === 'COMMUNITY' ? (
+                    {type === "COMMUNITY" ? (
                       <>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Komunitas</span>
-                          <span className="font-semibold text-right">{registrationData.community.communityName}</span>
+                          <span className="font-semibold text-right">{registrationData.community?.communityName || "-"}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Kategori</span>
-                          <span className="font-semibold">{registrationData.community.category}</span>
+                          <span className="font-semibold">{registrationData.community?.category || "-"}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Jumlah Peserta</span>
-                          <span className="font-semibold">{registrationData.community.totalMembers} orang</span>
+                          <span className="font-semibold">{registrationData.community?.totalMembers ?? 0} orang</span>
                         </div>
                       </>
                     ) : (
                       <>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Nama Peserta</span>
-                          <span className="font-semibold text-right">{registrationData.participant.fullName}</span>
+                          <span className="font-semibold text-right">{registrationData.participant?.fullName || "-"}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Kategori</span>
-                          <span className="font-semibold">{registrationData.participant.category}</span>
+                          <span className="font-semibold">{registrationData.participant?.category || "-"}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Nomor BIB</span>
-                          <span className="font-bold text-primary">{registrationData.participant.bibNumber}</span>
+                          <span className="font-bold text-primary">{registrationData.participant?.bibNumber || "-"}</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">Ukuran Jersey</span>
-                          <span className="font-semibold">{registrationData.participant.jerseySize}</span>
+                          <span className="font-semibold">{registrationData.participant?.jerseySize || "-"}</span>
                         </div>
                       </>
                     )}
                   </div>
 
                   {/* Price Breakdown for Individual */}
-                  {type === 'INDIVIDUAL' && (
+                  {type === "INDIVIDUAL" && registrationData.participant && (
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Biaya Registrasi {registrationData.participant.category}</span>
@@ -432,22 +463,21 @@ export default function PaymentPage() {
                   <div className="pt-4 border-t">
                     <div className="flex justify-between items-center">
                       <span className="text-gray-900 font-semibold">Total Pembayaran</span>
-                      <span className="text-2xl font-bold text-primary">
-                        {formatCurrency(totalAmount)}
-                      </span>
+                      <span className="text-2xl font-bold text-primary">{formatCurrency(totalAmount)}</span>
                     </div>
                   </div>
-                </div>
 
-                {/* Info */}
-                <div className="mt-6 p-3 bg-blue-50 rounded-lg">
-                  <div className="flex items-start">
-                    <CheckCircle className="w-4 h-4 text-blue-600 mr-2 flex-shrink-0 mt-0.5" />
-                    <div className="text-xs text-blue-800">
-                      <p className="font-semibold mb-1">Pembayaran Aman</p>
-                      <p>Transaksi Anda dilindungi dengan enkripsi SSL dan diproses melalui payment gateway terpercaya.</p>
+                  {/* Info */}
+                  <div className="mt-6 p-3 bg-blue-50 rounded-lg">
+                    <div className="flex items-start">
+                      <CheckCircle className="w-4 h-4 text-blue-600 mr-2 flex-shrink-0 mt-0.5" />
+                      <div className="text-xs text-blue-800">
+                        <p className="font-semibold mb-1">Pembayaran Aman</p>
+                        <p>Transaksi Anda dilindungi dengan enkripsi SSL dan diproses melalui payment gateway terpercaya.</p>
+                      </div>
                     </div>
                   </div>
+
                 </div>
               </div>
             </div>
@@ -455,5 +485,26 @@ export default function PaymentPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Loading fallback component
+function PaymentPageLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+        <p className="mt-4 text-gray-600">Memuat halaman pembayaran...</p>
+      </div>
+    </div>
+  );
+}
+
+// Main export - wrapped with Suspense
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={<PaymentPageLoading />}>
+      <PaymentPageContent />
+    </Suspense>
   );
 }

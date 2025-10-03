@@ -6,7 +6,7 @@ import {
   PAYMENT_STATUS_DISPLAY,
   PaymentStatus,
   PaymentUpdateRequest,
-  RefundRequest
+  RefundRequest,
 } from '@/app/types/payment';
 import {
   AlertCircle,
@@ -21,9 +21,9 @@ import {
   RotateCcw,
   Search,
   TrendingUp,
-  XCircle
+  XCircle,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface PaymentStats {
   total: number;
@@ -64,43 +64,37 @@ export default function PaymentsPage() {
     totalRevenue: 0,
     todayRevenue: 0,
     pendingAmount: 0,
-    averageAmount: 0
+    averageAmount: 0,
   });
   const [pagination, setPagination] = useState<PaginationData>({
     page: 1,
     limit: 10,
     total: 0,
-    totalPages: 0
+    totalPages: 0,
   });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterMethod, setFilterMethod] = useState('all');
-  const [dateRange, setDateRange] = useState({
-    from: '',
-    to: ''
-  });
+  const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [refundData, setRefundData] = useState<Omit<RefundRequest, 'paymentId'>>({
     amount: 0,
-    reason: ''
+    reason: '',
   });
   const [processingAction, setProcessingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchPayments();
-  }, [pagination.page, searchTerm, filterStatus, filterMethod, dateRange]);
-
-  const fetchPayments = async () => {
+  const fetchPayments = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+
       const params = new URLSearchParams({
         page: pagination.page.toString(),
-        limit: pagination.limit.toString()
+        limit: pagination.limit.toString(),
       });
 
       if (searchTerm) params.append('search', searchTerm);
@@ -110,7 +104,12 @@ export default function PaymentsPage() {
       if (dateRange.to) params.append('dateTo', dateRange.to);
 
       const response = await fetch(`/api/admin/payments?${params}`);
-      const data = await response.json();
+      const data: {
+        payments: Payment[];
+        stats: PaymentStats;
+        pagination: PaginationData;
+        error?: string;
+      } = await response.json();
 
       if (response.ok) {
         setPayments(data.payments);
@@ -119,17 +118,20 @@ export default function PaymentsPage() {
       } else {
         setError(data.error || 'Failed to fetch payments');
       }
-    } catch (error) {
-      console.error('Failed to fetch payments:', error);
+    } catch (err) {
+      console.error('Failed to fetch payments:', err);
       setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.page, pagination.limit, searchTerm, filterStatus, filterMethod, dateRange]);
+
+  useEffect(() => {
+    fetchPayments();
+  }, [fetchPayments]);
 
   const handleStatusUpdate = async (paymentId: string, newStatus: PaymentStatus) => {
     const displayStatus = PAYMENT_STATUS_DISPLAY[newStatus];
-
     if (!confirm(`Update payment status to ${displayStatus}?`)) return;
 
     try {
@@ -139,13 +141,13 @@ export default function PaymentsPage() {
       const updateData: PaymentUpdateRequest = {
         paymentId,
         status: newStatus,
-        notes: `Manual update to ${displayStatus}`
+        notes: `Manual update to ${displayStatus}`,
       };
 
       const response = await fetch('/api/admin/payments', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateData)
+        body: JSON.stringify(updateData),
       });
 
       const data: ApiResponse<Payment> = await response.json();
@@ -153,13 +155,12 @@ export default function PaymentsPage() {
       if (response.ok && data.success) {
         await fetchPayments();
         setShowDetailModal(false);
-        // Show success message (you can add a toast here)
         console.log(data.message || `Payment status updated to ${displayStatus}`);
       } else {
         setError(data.error || `Failed to update payment status`);
       }
-    } catch (error) {
-      console.error('Failed to update payment:', error);
+    } catch (err) {
+      console.error('Failed to update payment:', err);
       setError('Network error. Please try again.');
     } finally {
       setProcessingAction(false);
@@ -173,7 +174,6 @@ export default function PaymentsPage() {
       setError('Invalid refund amount');
       return;
     }
-
     if (!refundData.reason.trim()) {
       setError('Please provide a reason for the refund');
       return;
@@ -186,13 +186,13 @@ export default function PaymentsPage() {
       const request: RefundRequest = {
         paymentId: selectedPayment.id,
         amount: refundData.amount,
-        reason: refundData.reason
+        reason: refundData.reason,
       };
 
       const response = await fetch('/api/admin/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request)
+        body: JSON.stringify(request),
       });
 
       const data: ApiResponse<Payment> = await response.json();
@@ -201,13 +201,12 @@ export default function PaymentsPage() {
         await fetchPayments();
         setShowRefundModal(false);
         setRefundData({ amount: 0, reason: '' });
-        // Show success message
         console.log('Refund processed successfully');
       } else {
         setError(data.error || 'Failed to process refund');
       }
-    } catch (error) {
-      console.error('Failed to process refund:', error);
+    } catch (err) {
+      console.error('Failed to process refund:', err);
       setError('Network error. Please try again.');
     } finally {
       setProcessingAction(false);

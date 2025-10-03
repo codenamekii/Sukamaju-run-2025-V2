@@ -1,20 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  AlertCircle,
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Loader2,
-  Trophy,
-  Users
-} from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-
 import {
   Category,
   PROVINCES
@@ -33,6 +18,21 @@ import {
   RegistrationData,
   registrationSchema
 } from "@/lib/validation/registration";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Loader2,
+  Trophy,
+  Users
+} from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
 
 
 
@@ -612,7 +612,14 @@ export default function RegistrationPage() {
                             >
                               ✕
                             </button>
-                            <img src="/images/sizechart.png" alt="Size Chart" className="w-full h-auto" />
+
+                            <Image
+                              src="/images/sizechart.png"
+                              alt="Size Chart"
+                              width={600} // sesuaikan
+                              height={400} // sesuaikan
+                              className="w-full h-auto"
+                            />
                           </div>
                         </div>
                       )}

@@ -3,6 +3,11 @@ import { NextRequest as NextRequest2, NextResponse as NextResponse2 } from 'next
 
 const prisma2 = new PrismaClient2();
 
+interface NotificationMetadata {
+  usageCount?: number;
+  lastUsed?: string;
+}
+
 // Test send template
 export async function POST(request: NextRequest2) {
   try {
@@ -64,14 +69,15 @@ export async function POST(request: NextRequest2) {
     }
 
     // Update usage count
-    const currentMetadata = template.metadata as any || {};
+    const currentMetadata = (template.metadata as NotificationMetadata) || {};
+
     await prisma2.notification.update({
       where: { id: templateId },
       data: {
         metadata: {
           ...currentMetadata,
           usageCount: (currentMetadata.usageCount || 0) + 1,
-          lastUsed: new Date().toISOString()
+          lastUsed: new Date().toISOString(),
         }
       }
     });

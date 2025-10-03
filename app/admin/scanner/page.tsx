@@ -207,6 +207,7 @@ export default function QRScannerPage() {
           }, ...prev.slice(0, 9)]);
         }
       }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setScanResult({
         success: false,

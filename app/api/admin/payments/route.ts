@@ -15,6 +15,17 @@ function isValidPaymentStatus(status: string): status is PaymentStatus {
   return Object.values(PAYMENT_STATUS).includes(status as PaymentStatus);
 }
 
+interface RefundMetadata {
+  refund?: {
+    amount: number;
+    reason: string;
+    processedAt: string;
+    processedBy: string;
+  };
+  partialRefund?: boolean;
+  [key: string]: unknown; // fleksibel untuk field lain
+}
+
 // GET - Fetch payments with filters and stats
 export async function GET(request: NextRequest) {
   try {
@@ -531,8 +542,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already refunded
-    const metadata = payment.metadata as Record<string, any> || {};
-    if (metadata.refund && metadata.refund.amount) {
+    const metadata = (payment.metadata as RefundMetadata) ?? {};
+
+    if (metadata.refund?.amount !== undefined) {
       const totalRefunded = metadata.refund.amount + amount;
       if (totalRefunded > payment.amount) {
         return NextResponse.json(

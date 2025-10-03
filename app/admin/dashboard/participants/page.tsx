@@ -2,16 +2,18 @@
 
 import {
   CheckCircle,
-  ChevronLeft, ChevronRight,
+  ChevronLeft,
+  ChevronRight,
   Clock,
-  Download, Eye,
+  Download,
+  Eye,
   Filter,
   Search,
   UserCheck,
   XCircle
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
-import ParticipantDetailModal from '../components/participant-detail-modal';
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import ParticipantDetailModal from "../components/participant-detail-modal";
 
 interface Participant {
   id: string;
@@ -52,12 +54,12 @@ export default function ParticipantsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
-    search: '',
-    category: '',
-    status: '',
-    type: '',
-    dateFrom: '',
-    dateTo: ''
+    search: "",
+    category: "",
+    status: "",
+    type: "",
+    dateFrom: "",
+    dateTo: ""
   });
 
   // 🔹 State untuk modal
@@ -66,16 +68,13 @@ export default function ParticipantsPage() {
 
   const itemsPerPage = 10;
 
-  useEffect(() => {
-    fetchParticipants();
-  }, [currentPage, filters]);
-
-  const fetchParticipants = async () => {
+  const fetchParticipants = useCallback(async () => {
     setLoading(true);
     try {
       const queryParams = new URLSearchParams({
         page: currentPage.toString(),
         limit: itemsPerPage.toString(),
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v))
       });
 
@@ -85,66 +84,72 @@ export default function ParticipantsPage() {
       setParticipants(data.data || []);
       setTotalPages(Math.ceil((data.total || 0) / itemsPerPage));
     } catch (error) {
-      console.error('Error fetching participants:', error);
+      console.error("Error fetching participants:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, filters]);
+
+  useEffect(() => {
+    fetchParticipants();
+  }, [fetchParticipants]);
 
   const handleSelectAll = () => {
     if (selectedParticipants.length === participants.length) {
       setSelectedParticipants([]);
     } else {
-      setSelectedParticipants(participants.map(p => p.id));
+      setSelectedParticipants(participants.map((p) => p.id));
     }
   };
 
   const handleConfirmPayment = async (participantId: string) => {
-    if (!confirm('Konfirmasi pembayaran untuk peserta ini?')) return;
+    if (!confirm("Konfirmasi pembayaran untuk peserta ini?")) return;
 
     try {
-      const response = await fetch('/api/admin/payment/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/admin/payment/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ participantId })
       });
 
       if (response.ok) {
-        alert('Pembayaran berhasil dikonfirmasi');
+        alert("Pembayaran berhasil dikonfirmasi");
         fetchParticipants();
       }
-    } catch (error) {
-      alert('Gagal mengkonfirmasi pembayaran');
+    } catch {
+      alert("Gagal mengkonfirmasi pembayaran");
     }
   };
 
   const handleExport = async () => {
     try {
-      const response = await fetch('/api/admin/export/participants');
+      const response = await fetch("/api/admin/export/participants");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = `participants-${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.download = `participants-${new Date().toISOString().split("T")[0]}.xlsx`;
       a.click();
-    } catch (error) {
-      alert('Gagal export data');
+    } catch {
+      alert("Gagal export data");
     }
   };
 
   const getStatusBadge = (status: string) => {
     const badges = {
-      'CONFIRMED': { icon: CheckCircle, class: 'bg-green-100 text-green-800' },
-      'PENDING': { icon: Clock, class: 'bg-yellow-100 text-yellow-800' },
-      'IMPORTED': { icon: CheckCircle, class: 'bg-blue-100 text-blue-800' }, // ADD THIS
-      'CANCELLED': { icon: XCircle, class: 'bg-red-100 text-red-800' }
+      CONFIRMED: { icon: CheckCircle, class: "bg-green-100 text-green-800" },
+      PENDING: { icon: Clock, class: "bg-yellow-100 text-yellow-800" },
+      IMPORTED: { icon: CheckCircle, class: "bg-blue-100 text-blue-800" },
+      CANCELLED: { icon: XCircle, class: "bg-red-100 text-red-800" }
     };
 
     const badge = badges[status as keyof typeof badges] || badges.PENDING;
     const Icon = badge.icon;
 
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${badge.class}`}>
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${badge.class}`}
+      >
         <Icon className="w-3 h-3" />
         {status}
       </span>
@@ -152,9 +157,9 @@ export default function ParticipantsPage() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
       minimumFractionDigits: 0
     }).format(amount);
   };
@@ -209,7 +214,7 @@ export default function ParticipantsPage() {
               <option value="">All Status</option>
               <option value="CONFIRMED">Confirmed</option>
               <option value="PENDING">Pending</option>
-              <option value="IMPORTED">Imported</option> {/* ADD THIS LINE */}
+              <option value="IMPORTED">Imported</option>
               <option value="CANCELLED">Cancelled</option>
             </select>
 
@@ -311,7 +316,9 @@ export default function ParticipantsPage() {
                           checked={selectedParticipants.includes(participant.id)}
                           onChange={() => {
                             if (selectedParticipants.includes(participant.id)) {
-                              setSelectedParticipants(selectedParticipants.filter(id => id !== participant.id));
+                              setSelectedParticipants(
+                                selectedParticipants.filter((id) => id !== participant.id)
+                              );
                             } else {
                               setSelectedParticipants([...selectedParticipants, participant.id]);
                             }
@@ -335,13 +342,9 @@ export default function ParticipantsPage() {
                         {participant.bibNumber}
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-xs text-gray-600">
-                          {participant.registrationType}
-                        </span>
+                        <span className="text-xs text-gray-600">{participant.registrationType}</span>
                       </td>
-                      <td className="px-6 py-4">
-                        {getStatusBadge(participant.registrationStatus)}
-                      </td>
+                      <td className="px-6 py-4">{getStatusBadge(participant.registrationStatus)}</td>
                       <td className="px-6 py-4 text-sm text-gray-900">
                         {formatCurrency(participant.totalPrice)}
                       </td>
@@ -357,7 +360,7 @@ export default function ParticipantsPage() {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          {participant.registrationStatus === 'PENDING' && (
+                          {participant.registrationStatus === "PENDING" && (
                             <button
                               onClick={() => handleConfirmPayment(participant.id)}
                               className="text-gray-600 hover:text-green-600"
@@ -377,7 +380,9 @@ export default function ParticipantsPage() {
             {/* Pagination */}
             <div className="px-6 py-4 border-t flex items-center justify-between">
               <p className="text-sm text-gray-700">
-                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, (totalPages * itemsPerPage))} of {totalPages * itemsPerPage} results
+                Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                {Math.min(currentPage * itemsPerPage, totalPages * itemsPerPage)} of{" "}
+                {totalPages * itemsPerPage} results
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -406,9 +411,7 @@ export default function ParticipantsPage() {
       {/* Bulk Actions */}
       {selectedParticipants.length > 0 && (
         <div className="fixed bottom-6 right-6 bg-white rounded-lg shadow-lg p-4 flex items-center gap-4">
-          <p className="text-sm text-gray-600">
-            {selectedParticipants.length} selected
-          </p>
+          <p className="text-sm text-gray-600">{selectedParticipants.length} selected</p>
           <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
             Send Email
           </button>

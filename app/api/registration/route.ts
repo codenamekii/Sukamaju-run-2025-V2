@@ -222,7 +222,10 @@ export async function POST(request: NextRequest) {
       if (reminderTime > now) {
         setTimeout(async () => {
           try {
-            WhatsAppService.sendPaymentReminder(result.participant.id);
+            WhatsAppService.sendPaymentReminder(
+              result.participant.id,
+              result.payment.amount
+            );
           } catch (err) {
             console.error('Reminder WA error:', err);
           }

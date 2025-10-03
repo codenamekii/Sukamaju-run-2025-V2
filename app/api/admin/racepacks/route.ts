@@ -3,20 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 
-interface RacePackItem {
-  name: string;
-  quantity?: number;
-  size?: string;
-}
-
-interface CollectionNote {
-  items?: string[];
-  tshirtSize?: string;
-  notes?: string;
-  collectorName?: string;
-  collectorPhone?: string;
-}
-
 // Helper to get eligible participants filter
 function getEligibleParticipantsFilter(): Prisma.ParticipantWhereInput {
   return {

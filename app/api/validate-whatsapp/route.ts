@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to validate phone number' },

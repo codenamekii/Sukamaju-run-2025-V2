@@ -19,17 +19,6 @@ export function isValidBibFormat(bibNumber: string, category: '5K' | '10K'): boo
   }
 }
 
-/**
- * Extract numeric sequence from BIB (e.g., "5001" -> 1, "10001" -> 1)
- */
-function extractSequence(bibNumber: string, category: '5K' | '10K'): number {
-  const num = parseInt(bibNumber);
-  if (category === '5K') {
-    return num - 5000;
-  } else {
-    return num - 10000;
-  }
-}
 
 /**
  * Generate BIB number untuk 5K (5001, 5002, ...) dan 10K (10001, 10002, ...)
@@ -195,4 +184,10 @@ export async function fixInvalidBibs(tx?: Prisma.TransactionClient): Promise<voi
       console.log(`Fixed BIB for participant ${participant.id}: ${participant.bibNumber} -> ${newBib}`);
     }
   }
+}
+
+export function generateCommunityCode(prefix = 'COMM'): string {
+  const year = new Date().getFullYear().toString().slice(-2);
+  const rand = Math.floor(Math.random() * 9000) + 1000;
+  return `${prefix}${year}${rand}`;
 }

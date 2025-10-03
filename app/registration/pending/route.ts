@@ -9,52 +9,40 @@ export async function GET(request: NextRequest) {
     const registrationCode = searchParams.get('code');
 
     if (!registrationCode) {
-      return NextResponse.json(
-        { error: 'Masukkan Kode Registrasi' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Masukkan Kode Registrasi' }, { status: 400 });
     }
 
-    // Find participant or community
     const participant = await prisma.participant.findUnique({
       where: { registrationCode },
-      include: { payments: { orderBy: { createdAt: 'desc' }, take: 1 } }
+      include: { payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
     });
 
-    if (participant && participant.payments[0]) {
+    if (participant?.payments[0]) {
       return NextResponse.json({
         status: participant.payments[0].status,
         amount: participant.payments[0].amount,
         vaNumber: participant.payments[0].vaNumber,
-        paymentMethod: participant.payments[0].paymentMethod
+        paymentMethod: participant.payments[0].paymentMethod,
       });
     }
 
-    // Check community
     const community = await prisma.communityRegistration.findUnique({
       where: { registrationCode },
-      include: { payments: { orderBy: { createdAt: 'desc' }, take: 1 } }
+      include: { payments: { orderBy: { createdAt: 'desc' }, take: 1 } },
     });
 
-    if (community && community.payments[0]) {
+    if (community?.payments[0]) {
       return NextResponse.json({
         status: community.payments[0].status,
         amount: community.payments[0].amount,
         vaNumber: community.payments[0].vaNumber,
-        paymentMethod: community.payments[0].paymentMethod
+        paymentMethod: community.payments[0].paymentMethod,
       });
     }
 
-    return NextResponse.json(
-      { error: 'Pembayaran Tidak Ditemukan' },
-      { status: 404 }
-    );
-
+    return NextResponse.json({ error: 'Pembayaran Tidak Ditemukan' }, { status: 404 });
   } catch (error) {
     console.error('Error checking status pembayaran:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

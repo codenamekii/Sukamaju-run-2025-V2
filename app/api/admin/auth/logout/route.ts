@@ -3,48 +3,52 @@ import prisma from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function POST_LOGOUT(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('admin-token');
+    const cookieStore = await cookies(); // pakai await
+    const token = cookieStore.get("admin-token");
 
     if (token) {
-      // Verify token to get admin info for logging
       const admin = await AuthService.verifyToken(token.value);
 
       if (admin) {
-        // Log the logout
         await prisma.adminLog.create({
           data: {
             adminId: admin.id,
-            action: 'LOGOUT',
+            action: "LOGOUT",
             details: {
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
             },
-            ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null,
-            userAgent: request.headers.get('user-agent') || null
-          }
+            ipAddress:
+              request.headers.get("x-forwarded-for") ||
+              request.headers.get("x-real-ip") ||
+              null,
+            userAgent: request.headers.get("user-agent") || null,
+          },
         });
       }
     }
 
-    // Clear cookie
-    cookieStore.delete('admin-token');
-
-    return NextResponse.json({
+    // buat response
+    const res = NextResponse.json({
       success: true,
-      message: 'Logged out successfully'
+      message: "Logged out successfully",
     });
 
+    // hapus cookie lewat response
+    res.cookies.set("admin-token", "", { maxAge: 0 });
+
+    return res;
   } catch (error) {
-    console.error('Logout error:', error);
-    // Even if there's an error, still clear the cookie
-    const cookieStore = await cookies();
-    cookieStore.delete('admin-token');
+    console.error("Logout error:", error);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
-      message: 'Logged out'
+      message: "Logged out",
     });
+
+    res.cookies.set("admin-token", "", { maxAge: 0 });
+
+    return res;
   }
 }

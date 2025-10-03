@@ -1,9 +1,10 @@
 "use client";
 
 import { CheckCircle, Download, Package, Smartphone } from 'lucide-react';
+import Image from "next/image";
 import { useSearchParams } from 'next/navigation';
 import QRCode from 'qrcode';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 
 interface RegistrationData {
   participant: {
@@ -20,7 +21,8 @@ interface RegistrationData {
   };
 }
 
-export default function RegistrationSuccessPage() {
+// Component that uses useSearchParams - must be wrapped in Suspense
+function RegistrationSuccessContent() {
   const searchParams = useSearchParams();
   const registrationCode = searchParams.get('code');
   const orderId = searchParams.get('order_id');
@@ -30,38 +32,38 @@ export default function RegistrationSuccessPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    const fetchRegistrationData = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (registrationCode) params.append('code', registrationCode);
+        if (orderId) params.append('order_id', orderId);
+
+        const response = await fetch(`/api/registration/ticket?${params}`);
+
+        if (response.ok) {
+          const data: RegistrationData = await response.json();
+          setRegistrationData(data);
+
+          const qrCode =
+            data.racePack?.qrCode ||
+            `SR2025-${data.participant.category}-${data.participant.bibNumber || 'TBA'}-${Date.now().toString(36)}`;
+          await generateQRCode(qrCode);
+        } else {
+          console.error('Failed to fetch registration data:', response.status);
+        }
+      } catch (error) {
+        console.error('Failed to fetch registration data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     if (registrationCode || orderId) {
       fetchRegistrationData();
     } else {
       setLoading(false);
     }
   }, [registrationCode, orderId]);
-
-  const fetchRegistrationData = async () => {
-    try {
-      // Build query params
-      const params = new URLSearchParams();
-      if (registrationCode) params.append('code', registrationCode);
-      if (orderId) params.append('order_id', orderId);
-
-      const response = await fetch(`/api/registration/ticket?${params}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        setRegistrationData(data);
-
-        // Generate QR code
-        const qrCode = data.racePack?.qrCode || `SR2025-${data.participant.category}-${data.participant.bibNumber || 'TBA'}-${Date.now().toString(36)}`;
-        await generateQRCode(qrCode);
-      } else {
-        console.error('Failed to fetch registration data:', response.status);
-      }
-    } catch (error) {
-      console.error('Failed to fetch registration data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const generateQRCode = async (data: string) => {
     try {
@@ -112,7 +114,7 @@ export default function RegistrationSuccessPage() {
 
     // QR Code section
     if (qrDataUrl) {
-      const qrImage = new Image();
+      const qrImage = new window.Image();
       qrImage.onload = () => {
         // QR background
         ctx.fillStyle = '#F3F4F6';
@@ -165,7 +167,7 @@ export default function RegistrationSuccessPage() {
 
         ctx.font = '16px Arial';
         ctx.fillStyle = '#374151';
-        ctx.fillText('Date: 1-2 November 2025', 80, 960);
+        ctx.fillText('Date: 14-15 November 2025', 80, 960);
         ctx.fillText('Time: 10:00 - 18:00 WIB', 80, 985);
         ctx.fillText('Venue: Lapangan Subiantoro', 80, 1010);
 
@@ -253,7 +255,13 @@ export default function RegistrationSuccessPage() {
           <div className="bg-gray-50 rounded-lg p-6 mb-6">
             <div className="text-center">
               {qrDataUrl && (
-                <img src={qrDataUrl} alt="QR Code" className="mx-auto mb-4" />
+                <Image
+                  src={`/api/qr?code=${registrationData?.participant.registrationCode}`}
+                  alt="QR Code"
+                  width={200}
+                  height={200}
+                  className="mx-auto mb-4"
+                />
               )}
               <p className="text-sm text-gray-600 mb-2">Tunjukkan QR code ini di loket pengambilan</p>
               <p className="text-xs text-gray-500">Ambil screenshot atau unduh tiket ini untuk akses offline</p>
@@ -269,7 +277,7 @@ export default function RegistrationSuccessPage() {
             <div className="space-y-2 text-sm">
               <div className="flex items-start gap-2">
                 <span className="text-blue-700 font-medium">Tanggal:</span>
-                <span className="text-blue-900">1-2 November 2025</span>
+                <span className="text-blue-900">14-15 November 2025</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-blue-700 font-medium">Waktu:</span>
@@ -320,5 +328,26 @@ export default function RegistrationSuccessPage() {
         <canvas ref={canvasRef} className="hidden" />
       </div>
     </div>
+  );
+}
+
+// Loading fallback component
+function RegistrationSuccessLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Memuat informasi registrasi...</p>
+      </div>
+    </div>
+  );
+}
+
+// Main export - wrapped with Suspense
+export default function RegistrationSuccessPage() {
+  return (
+    <Suspense fallback={<RegistrationSuccessLoading />}>
+      <RegistrationSuccessContent />
+    </Suspense>
   );
 }

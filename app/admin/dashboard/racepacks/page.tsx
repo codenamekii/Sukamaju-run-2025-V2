@@ -79,38 +79,38 @@ export default function RacePacksPage() {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
+    const fetchRacePackData = async () => {
+      try {
+        setLoading(true);
+        const params = new URLSearchParams();
+        if (selectedCategory !== 'all') params.append('category', selectedCategory);
+        if (searchTerm) params.append('search', searchTerm);
+
+        const response = await fetch(`/api/admin/racepacks?${params}`);
+        const data = await response.json();
+
+        if (response.ok) {
+          setInventory(data.inventory || []);
+          setRecentDistributions(data.recentDistributions || []);
+          setPackContents(data.packContents || {});
+          setStats(data.stats || {
+            totalParticipants: 0,
+            totalDistributed: 0,
+            totalRemaining: 0,
+            totalWithJersey: 0,
+            overallPercentage: 0
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch race pack data:', error);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
+
     fetchRacePackData();
   }, [selectedCategory, searchTerm]);
-
-  const fetchRacePackData = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (selectedCategory !== 'all') params.append('category', selectedCategory);
-      if (searchTerm) params.append('search', searchTerm);
-
-      const response = await fetch(`/api/admin/racepacks?${params}`);
-      const data = await response.json();
-
-      if (response.ok) {
-        setInventory(data.inventory || []);
-        setRecentDistributions(data.recentDistributions || []);
-        setPackContents(data.packContents || {});
-        setStats(data.stats || {
-          totalParticipants: 0,
-          totalDistributed: 0,
-          totalRemaining: 0,
-          totalWithJersey: 0,
-          overallPercentage: 0
-        });
-      }
-    } catch (error) {
-      console.error('Failed to fetch race pack data:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -514,4 +514,8 @@ export default function RacePacksPage() {
       </div>
     </div>
   );
+}
+
+function fetchRacePackData() {
+  throw new Error('Function not implemented.');
 }

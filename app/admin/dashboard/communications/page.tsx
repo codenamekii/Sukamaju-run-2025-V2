@@ -118,7 +118,6 @@ export default function CommunicationsPage() {
   // UI state
   const [activeTab, setActiveTab] = useState<'templates' | 'send' | 'history'>('templates');
   const [messageType, setMessageType] = useState<'EMAIL' | 'WHATSAPP' | 'BOTH'>('WHATSAPP');
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -309,6 +308,7 @@ export default function CommunicationsPage() {
       } else {
         alert(`❌ Failed to send: ${data.error}`);
       }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       alert('Failed to send messages');
     } finally {

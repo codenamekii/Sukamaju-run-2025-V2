@@ -9,9 +9,7 @@ import {
   Edit2,
   Percent,
   Plus,
-  Tag,
   Trash2,
-  TrendingUp,
   Users,
   X
 } from 'lucide-react';
@@ -58,17 +56,31 @@ interface PromotionFormData {
   isActive: boolean;
 }
 
+// 🔹 tipe filter
+type FilterStatus = 'all' | 'active' | 'expired' | 'upcoming';
+type FilterType = 'all' | 'PERCENTAGE' | 'FIXED';
+
+const FILTER_STATUS_OPTIONS: FilterStatus[] = ['all', 'active', 'expired', 'upcoming'];
+const FILTER_TYPE_OPTIONS: FilterType[] = ['all', 'PERCENTAGE', 'FIXED'];
+
+function isFilterStatus(v: string): v is FilterStatus {
+  return FILTER_STATUS_OPTIONS.includes(v as FilterStatus);
+}
+function isFilterType(v: string): v is FilterType {
+  return FILTER_TYPE_OPTIONS.includes(v as FilterType);
+}
+
 export default function PromotionsPage() {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
-  const [stats, setStats] = useState<PromotionStats>({
+  const [, setStats] = useState<PromotionStats>({
     total: 0,
     active: 0,
     totalUsage: 0,
     totalMaxUsage: 0
   });
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterType, setFilterType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [filterType, setFilterType] = useState<FilterType>('all');
   const [showModal, setShowModal] = useState(false);
   const [editingPromotion, setEditingPromotion] = useState<Promotion | null>(null);
   const [formData, setFormData] = useState<PromotionFormData>({
@@ -86,29 +98,29 @@ export default function PromotionsPage() {
   });
 
   useEffect(() => {
+    const fetchPromotions = async () => {
+      try {
+        setLoading(true);
+        const params = new URLSearchParams();
+        if (filterStatus !== 'all') params.append('status', filterStatus);
+        if (filterType !== 'all') params.append('type', filterType);
+
+        const response = await fetch(`/api/admin/promotions?${params}`);
+        const data = await response.json();
+
+        if (response.ok) {
+          setPromotions(data.promotions);
+          setStats(data.stats);
+        }
+      } catch (error) {
+        console.error('Failed to fetch promotions:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchPromotions();
   }, [filterStatus, filterType]);
-
-  const fetchPromotions = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (filterStatus !== 'all') params.append('status', filterStatus);
-      if (filterType !== 'all') params.append('type', filterType);
-
-      const response = await fetch(`/api/admin/promotions?${params}`);
-      const data = await response.json();
-
-      if (response.ok) {
-        setPromotions(data.promotions);
-        setStats(data.stats);
-      }
-    } catch (error) {
-      console.error('Failed to fetch promotions:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,7 +138,8 @@ export default function PromotionsPage() {
       });
 
       if (response.ok) {
-        await fetchPromotions();
+        const data = await response.json(); // ⬅️ ini yang hilang
+        setPromotions((prev) => [...prev, data.promotion]);
         handleCloseModal();
       }
     } catch (error) {
@@ -143,7 +156,7 @@ export default function PromotionsPage() {
       });
 
       if (response.ok) {
-        await fetchPromotions();
+        setPromotions((prev) => prev.filter((promo) => promo.id !== id));
       }
     } catch (error) {
       console.error('Failed to delete promotion:', error);
@@ -264,75 +277,43 @@ export default function PromotionsPage() {
         </button>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Promotions</p>
-              <p className="text-2xl font-semibold text-gray-900 mt-1">{stats.total}</p>
-            </div>
-            <Tag className="w-8 h-8 text-blue-500" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Active Now</p>
-              <p className="text-2xl font-semibold text-green-600 mt-1">{stats.active}</p>
-            </div>
-            <CheckCircle className="w-8 h-8 text-green-500" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Usage</p>
-              <p className="text-2xl font-semibold text-purple-600 mt-1">{stats.totalUsage}</p>
-            </div>
-            <Users className="w-8 h-8 text-purple-500" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Usage Rate</p>
-              <p className="text-2xl font-semibold text-orange-600 mt-1">
-                {stats.totalMaxUsage > 0
-                  ? `${((stats.totalUsage / stats.totalMaxUsage) * 100).toFixed(1)}%`
-                  : '0%'}
-              </p>
-            </div>
-            <TrendingUp className="w-8 h-8 text-orange-500" />
-          </div>
-        </div>
-      </div>
-
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex gap-4">
           <select
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (isFilterStatus(v)) setFilterStatus(v);
+            }}
           >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="expired">Expired</option>
-            <option value="upcoming">Upcoming</option>
+            {FILTER_STATUS_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt === 'all'
+                  ? 'All Status'
+                  : opt.charAt(0).toUpperCase() + opt.slice(1)}
+              </option>
+            ))}
           </select>
 
           <select
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (isFilterType(v)) setFilterType(v);
+            }}
           >
-            <option value="all">All Types</option>
-            <option value="PERCENTAGE">Percentage</option>
-            <option value="FIXED">Fixed Amount</option>
+            {FILTER_TYPE_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt === 'all'
+                  ? 'All Types'
+                  : opt === 'PERCENTAGE'
+                    ? 'Percentage'
+                    : 'Fixed Amount'}
+              </option>
+            ))}
           </select>
         </div>
       </div>

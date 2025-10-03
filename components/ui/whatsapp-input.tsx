@@ -39,7 +39,7 @@ export default function WhatsAppInput({
     if (value !== internalValue) {
       setInternalValue(value);
     }
-  }, [value]);
+  }, [internalValue, value]);
 
   useEffect(() => {
     if (touched || focused) {
@@ -50,7 +50,7 @@ export default function WhatsAppInput({
         onValidChange(result.isValid);
       }
     }
-  }, [internalValue, touched, focused]);
+  }, [internalValue, touched, focused, onValidChange]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target.value;

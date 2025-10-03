@@ -140,12 +140,6 @@ export async function PATCH(request: NextRequest) {
     // Extract id and remove relational fields
     const {
       id,
-      payments,
-      racePack,
-      checkIns,
-      certificate,
-      communityMember,
-      Notification,
       ...updateData
     } = body;
 
@@ -266,6 +260,7 @@ export async function POST(request: NextRequest) {
           });
           if (payment) {
             await WhatsAppIntegrationService.onPaymentSuccess(payment.id);
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             notificationsSent++;
           }
         }

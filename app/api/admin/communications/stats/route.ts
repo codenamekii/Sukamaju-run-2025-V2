@@ -1,6 +1,6 @@
 // app/api/admin/communications/stats/route.ts
 import { prisma } from '@/lib/prisma';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 interface MessageStats {
   sent: number;
@@ -27,7 +27,7 @@ interface CommunicationStats {
   };
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const now = new Date();
 

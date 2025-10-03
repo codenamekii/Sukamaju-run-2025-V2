@@ -32,7 +32,6 @@ import { Activity as ActivityType, StatsResponse } from "./types";
 
 // Stats Card Component
 function StatCard({
-  title,
   value,
   subtitle,
   icon: Icon,

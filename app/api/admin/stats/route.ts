@@ -48,7 +48,7 @@ export async function GET() {
       lastMonthRegistrations,
       categoryStats,
       paymentStats,
-      recentNotifications,
+,
       recentParticipants,
       recentPayments
     ] = await Promise.all([

@@ -442,6 +442,7 @@ export async function POST(request: NextRequest) {
             }
           });
           adminId = newAdmin.id;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (adminError) {
           // If can't create admin, just skip logging
           console.log('Skipping admin log - no system admin account');
@@ -485,6 +486,7 @@ export async function POST(request: NextRequest) {
 }
 
 // GET - Check import status
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function GET(_request: NextRequest) {
   try {
     const [

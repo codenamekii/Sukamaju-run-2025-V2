@@ -2,7 +2,7 @@ import { AuthService as AuthServiceImport } from '@/lib/auth';
 import { prisma as prismaImport } from '@/lib/prisma';
 import { NextResponse as NextResponseImport } from 'next/server';
 
-export async function POST_SEED() {
+export async function POST() {
   try {
     // Check if admin already exists
     const existingAdmin = await prismaImport.admin.findFirst({
@@ -95,7 +95,6 @@ export async function POST_SEED() {
       }
     ];
 
-    // Insert settings
     for (const setting of defaultSettings) {
       await prismaImport.setting.upsert({
         where: { key: setting.key },
@@ -104,7 +103,6 @@ export async function POST_SEED() {
       });
     }
 
-    // Log the seed
     await prismaImport.adminLog.create({
       data: {
         adminId: admin.id,

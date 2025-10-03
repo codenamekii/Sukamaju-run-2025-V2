@@ -30,6 +30,7 @@ export default function AdminLoginPage() {
       } else {
         setError(data.error || 'Login gagal');
       }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setError('Terjadi kesalahan. Silakan coba lagi.');
     } finally {
